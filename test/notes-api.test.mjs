@@ -10,9 +10,9 @@ function memoryDb() {
   return {
     async list(owner) { return [...rows.values()].filter(r => r.owner_id === owner).map(({ id, title, body }) => ({ id, title, body })); },
     async insert(row) { if (rows.has(row.id)) return 'duplicate'; rows.set(row.id, row); return 'created'; },
-    async get(id) { const r = rows.get(id); return r ? { id: r.id, title: r.title, body: r.body } : null; },
-    async update(id, fields) { const r = rows.get(id); if (!r) return null; Object.assign(r, fields); return { id, title: r.title, body: r.body }; },
-    async remove(id) { return rows.delete(id); },
+    async get(id, owner) { const r = rows.get(id); return r && r.owner_id === owner ? { id: r.id, title: r.title, body: r.body } : null; },
+    async update(id, owner, fields) { const r = rows.get(id); if (!r || r.owner_id !== owner) return null; Object.assign(r, fields); return { id, title: r.title, body: r.body }; },
+    async remove(id, owner) { const r = rows.get(id); if (!r || r.owner_id !== owner) return false; return rows.delete(id); },
   };
 }
 
@@ -76,4 +76,20 @@ test('invalid input, duplicate ids and bad methods are rejected', async () => {
   assert.equal((await call(collection, { method: 'POST', headers, body: { id: B, title: 't' } })).status, 409);
   assert.equal((await call(item, { method: 'GET', headers, query: { id: 'zzz' } })).status, 404);
   assert.equal((await call(collection, { method: 'PATCH', headers })).status, 405);
+});
+
+test('a logged-in user cannot read, edit, delete or take over another user note', async () => {
+  const { collection, item } = api();
+  const a = { authorization: 'Bearer a' };
+  const b = { authorization: 'Bearer b' };
+  const { body: { id } } = await call(collection, { method: 'POST', headers: a, body: { title: 'A의 메모', body: '비공개' } });
+  assert.equal((await call(item, { method: 'GET', headers: b, query: { id } })).status, 404);
+  assert.equal((await call(item, { method: 'PUT', headers: b, query: { id }, body: { title: '탈취' } })).status, 404);
+  assert.equal((await call(item, { method: 'DELETE', headers: b, query: { id } })).status, 404);
+  assert.equal((await call(item, { method: 'PUT', headers: a, query: { id }, body: { title: 't', owner_id: B } })).status, 403);
+  // 본문에 남의 owner_id를 실어 추가해도 서버가 확인한 사용자 ID로 저장됩니다.
+  const forged = await call(collection, { method: 'POST', headers: b, body: { title: 'B', owner_id: A } });
+  assert.equal(forged.status, 201);
+  assert.deepEqual((await call(collection, { method: 'GET', headers: a })).body.map(n => n.title), ['A의 메모']);
+  assert.deepEqual((await call(item, { method: 'GET', headers: a, query: { id } })).body.title, 'A의 메모');
 });

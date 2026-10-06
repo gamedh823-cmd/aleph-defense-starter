@@ -23,19 +23,21 @@ function makeDb(client) {
       if (error) throw error;
       return 'created';
     },
-    async get(id) {
-      const { data, error } = await client.from(TABLE).select(COLUMNS).eq('id', id).maybeSingle();
+    async get(id, ownerId) {
+      const { data, error } = await client.from(TABLE).select(COLUMNS)
+        .eq('id', id).eq('owner_id', ownerId).maybeSingle();
       if (error) throw error;
       return data;
     },
-    async update(id, fields) {
-      const { data, error } = await client.from(TABLE).update(fields).eq('id', id)
-        .select(COLUMNS).maybeSingle();
+    async update(id, ownerId, fields) {
+      const { data, error } = await client.from(TABLE).update(fields)
+        .eq('id', id).eq('owner_id', ownerId).select(COLUMNS).maybeSingle();
       if (error) throw error;
       return data;
     },
-    async remove(id) {
-      const { data, error } = await client.from(TABLE).delete().eq('id', id).select('id');
+    async remove(id, ownerId) {
+      const { data, error } = await client.from(TABLE).delete()
+        .eq('id', id).eq('owner_id', ownerId).select('id');
       if (error) throw error;
       return data.length > 0;
     },

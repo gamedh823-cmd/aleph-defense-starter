@@ -55,3 +55,9 @@ test('first attack check reads public data.json without credentials', async () =
     globalThis.fetch = originalFetch;
   }
 });
+
+test('build identity records the configured step and rejects invalid steps', () => {
+  assert.equal(deploymentIdentity(env, { ...config, step: 2 }).step, 2);
+  assert.throws(() => deploymentIdentity(env, { ...config, step: 0 }));
+  assert.throws(() => deploymentIdentity(env, { ...config, step: 13 }));
+});

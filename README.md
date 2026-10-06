@@ -18,7 +18,27 @@
 
 로컬에서 가상 화면만 확인할 때는 `npm run build -- --local`을 사용합니다. 로컬 실행은 Vercel 배포나 심판 접수를 증명하지 않습니다. 저장소의 `src/attack-check.mjs`는 실제 배포가 된 뒤 `/data.json`을 비로그인으로 요청해 공개 가상 메모의 확인 표시를 읽습니다.
 
-## 2단계: 자료를 코드 밖으로 옮김 (진행 중)
+## 3단계: 진짜 로그인 (현재 단계)
+
+현재 단계는 3단계입니다(`aleph.config.json`의 `step: 3`). 아래 2단계 설명은 이 단계의 바탕입니다.
+
+작동하는 기능
+- 화면(`/`)은 Supabase Auth 이메일·비밀번호로 로그인과 로그아웃을 하고, 로그인한 뒤에만 메모를 보여 줍니다. 로그인 실패 이유는 화면에 나옵니다. 화면에는 공개용 Project URL과 publishable key만 있습니다.
+- 서버 API는 요청의 `Authorization: Bearer` 토큰을 `src/verify-login.mjs`로 검사합니다. 토큰이 없거나 위조·만료·다른 서비스용이면 401과 JSON 오류(`LOGIN_REQUIRED`)로 거부합니다. 브라우저가 보낸 사용자 ID나 역할은 믿지 않습니다.
+- 경로: `GET·POST /api/notes`, `GET·PUT·DELETE /api/notes/:id`. 목록은 로그인한 사용자의 메모만 돌려주고, 추가할 때 서버가 확인한 사용자 ID를 `owner_id`로 저장합니다. 허용 경로는 `aleph.config.json`의 `allowedRoutes`에 있습니다.
+- 메모는 `db/memos.sql`로 만든 `defense_memos` 테이블에 있습니다(RLS 켜짐, `anon`·`authenticated` 권한 회수).
+
+다시 실행하는 방법
+1. Supabase SQL Editor에서 `db/memos.sql`을 실행합니다.
+2. Supabase Authentication에서 테스트 계정을 만듭니다. 비밀번호는 저장소에 적지 않습니다.
+3. Vercel 환경변수 `SUPABASE_URL`, `SUPABASE_SECRET_KEY`는 2단계와 같습니다(값은 저장소에 없음).
+4. 자동 시험: `npm run test:notes`, `npm run test:r5`.
+
+남은 약점
+- `/api/notes/:id`는 아직 소유자를 검사하지 않습니다. 로그인한 B가 A의 메모 ID를 알면 읽고 고칠 수 있습니다. 4단계에서 막습니다.
+- 옛 공개 커밋·배포 이력의 과거 노출은 여전히 해소되지 않았습니다.
+
+## 2단계: 자료를 코드 밖으로 옮김 (지난 단계)
 
 - 가상 메모 네 건은 Supabase의 `defense_notes` 테이블에 있습니다. 테이블 정의는 `db/notes.sql`(RLS 켜짐, `anon`·`authenticated` 권한 회수)이고, 메모 본문 입력문은 커밋하지 않는 `db/seed.local.sql`에만 있습니다.
 - 화면은 `api/notes.js` 서버 함수(`/api/notes`)로 메모를 읽습니다. 함수는 Vercel 환경변수 `SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`를 읽고, 키는 코드·응답·로그에 넣지 않습니다.

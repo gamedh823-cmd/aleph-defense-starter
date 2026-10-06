@@ -67,3 +67,12 @@ test('build identity publishes allowed routes only when configured', () => {
   assert.deepEqual(deploymentIdentity(env, { ...config, step: 5, allowedRoutes: routes }).allowedRoutes, routes);
   assert.equal('allowedRoutes' in deploymentIdentity(env, { ...config, step: 5, allowedRoutes: [] }), false);
 });
+
+test('build identity publishes only a clean https original api url', () => {
+  const clean = 'https://project.supabase.co/rest/v1/defense_memos';
+  assert.equal(deploymentIdentity(env, { ...config, step: 5, originalApiUrl: clean }).originalApiUrl, clean);
+  for (const bad of ['http://project.supabase.co/rest/v1/x', `${clean}?apikey=secret`, `${clean}#frag`,
+    'https://user:pw@project.supabase.co/x', 'not a url', null]) {
+    assert.equal('originalApiUrl' in deploymentIdentity(env, { ...config, step: 5, originalApiUrl: bad }), false);
+  }
+});

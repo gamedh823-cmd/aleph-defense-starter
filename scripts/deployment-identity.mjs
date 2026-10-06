@@ -21,6 +21,14 @@ export function deploymentIdentity(env, config) {
   const allowedRoutes = Array.isArray(config.allowedRoutes)
     && config.allowedRoutes.every(route => typeof route === 'string' && route.length <= 120)
     ? config.allowedRoutes : [];
+  // 쿼리·비밀값 없는 HTTPS 원본 자료 경로만 공개합니다.
+  let originalApiUrl;
+  try {
+    const url = new URL(config.originalApiUrl);
+    if (url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash) {
+      originalApiUrl = url.href;
+    }
+  } catch { /* 5단계 이전에는 없는 값입니다. */ }
   return {
     schema: 'aleph.defense.deployment.v1',
     step: config.step,
@@ -30,5 +38,6 @@ export function deploymentIdentity(env, config) {
     judgeIssuer: config.judgeIssuer,
     sampleMarker: config.sampleMarker,
     ...(allowedRoutes.length ? { allowedRoutes } : {}),
+    ...(originalApiUrl ? { originalApiUrl } : {}),
   };
 }

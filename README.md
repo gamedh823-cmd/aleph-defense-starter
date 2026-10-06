@@ -18,9 +18,32 @@
 
 로컬에서 가상 화면만 확인할 때는 `npm run build -- --local`을 사용합니다. 로컬 실행은 Vercel 배포나 심판 접수를 증명하지 않습니다. 저장소의 `src/attack-check.mjs`는 실제 배포가 된 뒤 `/data.json`을 비로그인으로 요청해 공개 가상 메모의 확인 표시를 읽습니다.
 
-## 4단계: 로그인해도 내 자료만 보이게 (현재 단계)
+## 5단계: 자료 요청을 서버 한곳으로 (현재 단계)
 
-현재 단계는 4단계입니다(`aleph.config.json`의 `step: 4`).
+현재 단계는 5단계입니다(`aleph.config.json`의 `step: 5`).
+
+작동하는 기능
+- 브라우저는 Supabase에 직접 붙지 않습니다. 화면 코드에는 Supabase 키와 SDK가 없고, 로그인은 `POST /api/auth/login`, 토큰 갱신은 `POST /api/auth/refresh`, 메모는 `/api/notes`로만 요청합니다. 로그아웃은 브라우저에 저장된 토큰을 지우는 것입니다.
+- 서버 함수는 로그인 검사와 소유자 검사를 4단계와 똑같이 합니다.
+- `db/direct-access-revoke.sql`: 메모 테이블의 `PUBLIC`·`anon`·`authenticated` 직접 권한을 모두 회수하고 `service_role`만 남깁니다. 적용 전후 권한을 `has_table_privilege`로 대조합니다. 다른 테이블은 건드리지 않습니다.
+- 원본 자료 API 주소(쿼리 없음)는 `aleph.config.json`의 `originalApiUrl`에 있고, 허용 경로는 `allowedRoutes`이며 빌드가 `/aleph.json`에도 싣습니다.
+
+환경변수(이름만 적습니다. 값은 Vercel의 비밀 입력란에만 넣습니다)
+- `SUPABASE_URL`, `SUPABASE_SECRET_KEY`: 메모 API (2~4단계와 같음)
+- `SUPABASE_PUBLISHABLE_KEY`: 로그인·갱신 서버 함수 전용. 화면 코드에는 두지 않습니다.
+
+다시 실행하는 방법
+1. Vercel 환경변수에 위 세 개를 넣고 다시 배포합니다.
+2. 배포가 정상인 것을 화면에서 확인한 뒤 SQL Editor에서 `db/direct-access-revoke.sql`을 실행하고, 앞뒤 권한 표를 비교합니다.
+3. 자동 시험: `npm run test:notes`, `npm run test:r5`, `npm run test:auth`.
+
+남은 약점
+- 로그인 토큰을 브라우저 `localStorage`에 보관하므로, 화면에 스크립트가 주입되면 토큰이 노출될 수 있습니다. 화면은 사용자 입력을 `textContent`로만 넣어 막고 있습니다.
+- 로그인 시도 횟수 제한은 아직 없습니다.
+- 옛 공개 커밋·배포 이력의 과거 노출은 여전히 해소되지 않았습니다.
+
+## 4단계: 로그인해도 내 자료만 보이게 (지난 단계)
+
 
 작동하는 기능
 - 메모 읽기·추가·수정·삭제는 서버가 확인한 사용자 ID와 DB의 `owner_id`가 같을 때만 됩니다. URL이나 본문의 `owner_id`는 믿지 않고, 추가할 때는 확인된 ID로 저장합니다.

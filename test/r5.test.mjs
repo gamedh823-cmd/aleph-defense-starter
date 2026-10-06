@@ -61,3 +61,9 @@ test('build identity records the configured step and rejects invalid steps', () 
   assert.throws(() => deploymentIdentity(env, { ...config, step: 0 }));
   assert.throws(() => deploymentIdentity(env, { ...config, step: 13 }));
 });
+
+test('build identity publishes allowed routes only when configured', () => {
+  const routes = ['GET /api/notes', 'POST /api/notes'];
+  assert.deepEqual(deploymentIdentity(env, { ...config, step: 5, allowedRoutes: routes }).allowedRoutes, routes);
+  assert.equal('allowedRoutes' in deploymentIdentity(env, { ...config, step: 5, allowedRoutes: [] }), false);
+});

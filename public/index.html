@@ -28,7 +28,7 @@
 </head>
 <body>
   <main>
-    <div class="eyebrow">BYTE BACK · 3단계 진짜 로그인</div>
+    <div class="eyebrow">BYTE BACK · 5단계 서버 한곳으로</div>
     <h1>자료실</h1>
     <p>로그인한 계정만 자료를 볼 수 있습니다. 아래 기록은 모두 실습을 위해 만든 가상 자료입니다.</p>
     <div class="notice">로그인은 신원 확인일 뿐입니다. 다른 사람의 자료를 막는 일은 다음 단계에서 이어집니다.</div>
@@ -58,22 +58,46 @@
     </section>
   </main>
   <script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
-
-    // 공개용 값입니다. 서버 전용 키는 이 파일에 없습니다.
-    const SUPABASE_URL = 'https://fqiifekzzzpjtppkkcic.supabase.co';
-    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_DUTz5u3l16nEZZ20KWW0pw_JfDj91od';
-    const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-
+    // 이 화면에는 Supabase 키가 없습니다. 로그인과 자료 요청은 모두 서버 함수(/api/...)로 보냅니다.
+    const STORAGE_KEY = 'defense-session';
     const $ = (id) => document.getElementById(id);
     const status = (text) => { $('status').textContent = text; };
 
-    async function api(path, options = {}) {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
+    function readSession() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
+    }
+    function saveSession(session) {
+      try {
+        if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+        else localStorage.removeItem(STORAGE_KEY);
+      } catch { /* 저장이 막혀 있어도 이번 화면에서는 동작합니다. */ }
+      memory = session;
+    }
+    let memory = readSession();
+
+    async function post(path, body) {
       const response = await fetch(path, {
-        ...options,
-        cache: 'no-store',
+        method: 'POST', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw Object.assign(new Error(payload?.message ?? payload?.error ?? `요청 실패 (HTTP ${response.status})`), { status: response.status });
+      return payload;
+    }
+
+    async function freshToken() {
+      if (!memory) return null;
+      if (memory.expires_at - Math.floor(Date.now() / 1000) < 60) {
+        try { saveSession(await post('/api/auth/refresh', { refresh_token: memory.refresh_token })); }
+        catch { saveSession(null); show(null); return null; }
+      }
+      return memory.access_token;
+    }
+
+    async function api(path, options = {}) {
+      const token = await freshToken();
+      const response = await fetch(path, {
+        ...options, cache: 'no-store',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
       const payload = response.status === 204 ? null : await response.json().catch(() => null);
@@ -130,18 +154,23 @@
       const loggedIn = Boolean(session);
       $('login').hidden = loggedIn;
       $('app').hidden = !loggedIn;
-      $('who').textContent = loggedIn ? `${session.user.email} 로그인됨` : '';
+      $('who').textContent = loggedIn ? `${session.email} 로그인됨` : '';
       if (loggedIn) load(); else $('notes').replaceChildren();
     }
 
     $('login').addEventListener('submit', async (event) => {
       event.preventDefault();
       status('로그인 중입니다.');
-      const { error } = await supabase.auth.signInWithPassword({ email: $('email').value, password: $('password').value });
+      try {
+        saveSession(await post('/api/auth/login', { email: $('email').value, password: $('password').value }));
+        status('');
+        show(memory);
+      } catch (error) {
+        status(`로그인하지 못했습니다: ${error.message}`);
+      }
       $('password').value = '';
-      status(error ? `로그인하지 못했습니다: ${error.message}` : '');
     });
-    $('logout').addEventListener('click', async () => { await supabase.auth.signOut(); status('로그아웃했습니다.'); });
+    $('logout').addEventListener('click', () => { saveSession(null); show(null); status('로그아웃했습니다.'); });
     $('add').addEventListener('submit', async (event) => {
       event.preventDefault();
       try {
@@ -151,9 +180,7 @@
       } catch (error) { status(error.message); }
     });
 
-    supabase.auth.onAuthStateChange((_event, session) => show(session));
-    const { data } = await supabase.auth.getSession();
-    show(data.session);
+    show(memory);
   </script>
 </body>
 </html>

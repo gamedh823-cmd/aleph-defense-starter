@@ -15,3 +15,6 @@ alter table public.defense_notes enable row level security;
 
 -- 공개 키 역할의 테이블 권한도 회수합니다. (service_role은 RLS를 우회해 서버 함수에서만 읽습니다.)
 revoke all on public.defense_notes from anon, authenticated;
+
+-- 서버 함수가 쓰는 service_role에는 읽기 권한을 명시합니다. (새 테이블 자동 공개를 끈 프로젝트용)
+grant select on public.defense_notes to service_role;

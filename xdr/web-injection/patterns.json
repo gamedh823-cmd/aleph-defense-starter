@@ -1,0 +1,55 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "web-injection",
+  "source": "MITRE ATT&CK T1190 Exploit Public-Facing Application",
+  "patterns": [
+    {
+      "id": "sql-fragment-in-request",
+      "name": "요청 인자 안의 SQL 구문",
+      "verdict": "block",
+      "condition": "T1190 표시가 있고 설명에 SQL 구문·데이터베이스 조회를 이어 붙인 표기가 있으며, 규칙 수준이 10 이상이거나 같은 요청이 5번 이상 반복됨",
+      "match": { "mitre": "T1190", "descriptionPatterns": ["SQL", "데이터베이스 조회"], "anyOf": [{ "minLevel": 10 }, { "minCount": 5 }] },
+      "evidence": "MITRE ATT&CK T1190(Exploit Public-Facing Application): 공개 웹 앱의 요청 인자에 SQL 구문을 이어 붙이는 것은 SQL 주입의 대표 형태이며, 무브잇(CVE-2023-34362) 사고가 이 방식이었습니다."
+    },
+    {
+      "id": "script-tag-in-request",
+      "name": "스크립트 삽입 표기",
+      "verdict": "block",
+      "condition": "T1190 표시가 있고 설명에 스크립트 삽입·표식이 있으며, 규칙 수준이 10 이상이거나 5번 이상 반복됨",
+      "match": { "mitre": "T1190", "descriptionPatterns": ["스크립트 (?:삽입|표식|표기)", "삽입 표기"], "anyOf": [{ "minLevel": 10 }, { "minCount": 5 }] },
+      "evidence": "MITRE ATT&CK T1190: 공개 웹 앱의 입력 칸에 스크립트 표식을 반복해서 넣는 것은 입력 검증이 허술한 곳을 찾는 대표적인 시도입니다."
+    },
+    {
+      "id": "path-traversal-repeat",
+      "name": "경로 거슬러 올라가기 반복",
+      "verdict": "block",
+      "condition": "T1190 표시가 있고 설명에 경로를 거슬러 올라가거나 이탈하는 표기가 있으며, 규칙 수준이 10 이상이거나 5번 이상 반복됨",
+      "match": { "mitre": "T1190", "descriptionPatterns": ["거슬러", "경로 이탈"], "anyOf": [{ "minLevel": 10 }, { "minCount": 5 }] },
+      "evidence": "MITRE ATT&CK T1190: 파일 경로 인자에 ../ 를 여러 단계 반복해 허용 범위 밖 파일을 노리는 것은 경로 조작 공격의 알려진 형태입니다."
+    },
+    {
+      "id": "command-separator-in-request",
+      "name": "명령 구분자 삽입",
+      "verdict": "block",
+      "condition": "T1190 표시가 있고 설명에 명령 구분자 표기가 있으며, 규칙 수준이 10 이상이거나 5번 이상 반복됨",
+      "match": { "mitre": "T1190", "descriptionPatterns": ["명령 구분자"], "anyOf": [{ "minLevel": 10 }, { "minCount": 5 }] },
+      "evidence": "MITRE ATT&CK T1190: 요청 인자에 명령 구분자를 섞어 서버가 다른 명령까지 실행하게 만드는 것은 공개 앱 악용(명령 주입)의 알려진 형태입니다."
+    },
+    {
+      "id": "repeated-injection-shape",
+      "name": "반복되는 주입 형태 요청",
+      "verdict": "block",
+      "condition": "T1190 표시가 있고 같은 주소에서 같은 형태의 비정상 요청이 5번 이상 반복되거나 규칙 수준이 10 이상임",
+      "match": { "mitre": "T1190", "anyOf": [{ "minLevel": 10 }, { "minCount": 5 }] },
+      "evidence": "MITRE ATT&CK T1190: 같은 주소에서 같은 형태의 비정상 요청이 반복되면 단발 오탐이 아니라 공개 앱을 노린 시도로 봅니다."
+    },
+    {
+      "id": "weak-injection-signal",
+      "name": "낮은 수준의 주입 형태 신호",
+      "verdict": "alert",
+      "condition": "T1190 표시가 있고 규칙 수준이 5 이상 9 이하이거나 반복 없이 한두 번만 나타남",
+      "match": { "mitre": "T1190", "minLevel": 5, "maxLevel": 9 },
+      "evidence": "MITRE ATT&CK T1190: 수업 단어나 따옴표 한 번처럼 반복 없는 표기는 정상 입력과 구분하기 어려워 막지 않고 알림만 남깁니다."
+    }
+  ]
+}

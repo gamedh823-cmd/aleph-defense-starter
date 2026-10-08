@@ -1,0 +1,98 @@
+{
+  "schema": "aleph.xdr.block-rules.v1",
+  "moduleKey": "brute-force",
+  "ttlMinutes": 60,
+  "rules": [
+    {
+      "ruleId": "xdr.brute-force.deny.203.0.113.10",
+      "action": "deny",
+      "srcip": "203.0.113.10",
+      "evidenceAlertIds": [
+        "bf-01",
+        "bf-02"
+      ],
+      "expiresAt": "2026-09-27T01:12:40.000Z",
+      "reason": "패턴: 같은 주소의 로그인 실패 연속"
+    },
+    {
+      "ruleId": "xdr.brute-force.deny.198.51.100.20",
+      "action": "deny",
+      "srcip": "198.51.100.20",
+      "evidenceAlertIds": [
+        "bf-03"
+      ],
+      "expiresAt": "2026-09-27T01:14:02.000Z",
+      "reason": "패턴: 같은 주소의 로그인 실패 연속, 여러 계정에 같은 비밀번호 대입"
+    },
+    {
+      "ruleId": "xdr.brute-force.deny.192.0.2.30",
+      "action": "deny",
+      "srcip": "192.0.2.30",
+      "evidenceAlertIds": [
+        "bf-04"
+      ],
+      "expiresAt": "2026-09-27T01:20:11.000Z",
+      "reason": "패턴: 같은 주소의 로그인 실패 연속"
+    },
+    {
+      "ruleId": "xdr.brute-force.deny.203.0.113.21",
+      "action": "deny",
+      "srcip": "203.0.113.21",
+      "evidenceAlertIds": [
+        "bf-05"
+      ],
+      "expiresAt": "2026-09-27T01:21:00.000Z",
+      "reason": "패턴: 여러 계정에 같은 비밀번호 대입"
+    },
+    {
+      "ruleId": "xdr.brute-force.deny.198.51.100.44",
+      "action": "deny",
+      "srcip": "198.51.100.44",
+      "evidenceAlertIds": [
+        "bf-06"
+      ],
+      "expiresAt": "2026-09-27T03:02:15.000Z",
+      "reason": "패턴: 같은 주소의 로그인 실패 연속"
+    },
+    {
+      "ruleId": "xdr.brute-force.deny.203.0.113.15",
+      "action": "deny",
+      "srcip": "203.0.113.15",
+      "evidenceAlertIds": [
+        "bf-07"
+      ],
+      "expiresAt": "2026-09-27T03:05:40.000Z",
+      "reason": "패턴: 같은 주소의 로그인 실패 연속"
+    },
+    {
+      "ruleId": "xdr.brute-force.deny.192.0.2.18",
+      "action": "deny",
+      "srcip": "192.0.2.18",
+      "evidenceAlertIds": [
+        "bf-08"
+      ],
+      "expiresAt": "2026-09-27T05:10:02.000Z",
+      "reason": "패턴: 같은 주소의 로그인 실패 연속"
+    },
+    {
+      "ruleId": "xdr.brute-force.deny.198.51.100.8",
+      "action": "deny",
+      "srcip": "198.51.100.8",
+      "evidenceAlertIds": [
+        "bf-09"
+      ],
+      "expiresAt": "2026-09-27T06:22:18.000Z",
+      "reason": "패턴: 여러 계정에 같은 비밀번호 대입"
+    },
+    {
+      "ruleId": "xdr.brute-force.deny.203.0.113.40",
+      "action": "deny",
+      "srcip": "203.0.113.40",
+      "evidenceAlertIds": [
+        "bf-10"
+      ],
+      "expiresAt": "2026-09-27T07:40:01.000Z",
+      "reason": "패턴: 같은 주소의 로그인 실패 연속"
+    }
+  ]
+}

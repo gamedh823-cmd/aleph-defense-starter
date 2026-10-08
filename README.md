@@ -18,6 +18,19 @@
 
 로컬에서 가상 화면만 확인할 때는 `npm run build -- --local`을 사용합니다. 로컬 실행은 Vercel 배포나 심판 접수를 증명하지 않습니다. 저장소의 `src/attack-check.mjs`는 실제 배포가 된 뒤 `/data.json`을 비로그인으로 요청해 공개 가상 메모의 확인 표시를 읽습니다.
 
+## 보너스 xdr-01: 무차별 로그인 공격 탐지
+
+`xdr/brute-force/`에 Wazuh 모양의 연습 경보(`xdr/fixtures/brute-force.json`, 28건)를 판단하는 부품이 있습니다. 내 ZTNA 판정기(`src/decider.mjs`)는 고치지 않습니다.
+
+- `read-alerts.mjs`: 시각·출발 주소·계정·규칙 수준·설명만 뽑고, 비밀값처럼 보이는 값은 가립니다.
+- `patterns.json`: MITRE ATT&CK T1110 근거가 한 줄씩 있는 패턴 세 개(실패 연속, 여러 계정 대입, 낮은 수준 신호).
+- `decide.mjs`: `decide(alert)`가 `{ action, confidence, reason }`을 돌려줍니다. 0.85 이상 `block`, 0.5 이상 `alert`, 그 아래 `record`입니다. 기본 판단은 규칙만으로 정해지고, 애매한 경보에만 환경변수 `JEV_API_URL`(선택)이 있을 때 Jev에 묻습니다. Jev가 없거나 응답이 없으면 `alert`이며, Jev는 애매한 경보를 차단으로 올리지 못합니다.
+- `apply.mjs`: 차단 후보만 만료 시각과 근거 경보 번호가 붙은 거부 규칙(`block-rules.json`)으로 내보내고, 알림을 `xdr/alerts.log`에 한 줄씩 쌓습니다. 정상·알림 경보에도 나온 주소는 규칙에 넣지 않습니다.
+
+실행: `npm run xdr:run -- brute-force`(결과는 `xdr/brute-force/result.json`), `npm run xdr:apply`, 시험은 `node --test test/xdr-brute-force.test.mjs`.
+
+한계: 판정은 연습 경보의 규칙 수준·실패 건수·계정 수를 기준으로 하며 실제 Wazuh 운영 환경에서 검증하지 않았습니다. 거부 규칙의 만료 시각은 근거 경보 시각에서 60분 뒤입니다.
+
 ## 5단계: 자료 요청을 서버 한곳으로 (현재 단계)
 
 현재 단계는 5단계입니다(`aleph.config.json`의 `step: 5`).

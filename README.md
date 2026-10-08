@@ -24,7 +24,7 @@
 
 - `read-alerts.mjs`: 시각·출발 주소·계정·규칙 수준·설명만 뽑고, 비밀값처럼 보이는 값은 가립니다.
 - `patterns.json`: MITRE ATT&CK T1110 근거가 한 줄씩 있는 패턴 세 개(실패 연속, 여러 계정 대입, 낮은 수준 신호).
-- `decide.mjs`: `decide(alert)`가 `{ action, confidence, reason }`을 돌려줍니다. 0.85 이상 `block`, 0.5 이상 `alert`, 그 아래 `record`입니다. 기본 판단은 규칙만으로 정해지고, 애매한 경보에만 환경변수 `JEV_API_URL`(선택)이 있을 때 Jev에 묻습니다. Jev가 없거나 응답이 없으면 `alert`이며, Jev는 애매한 경보를 차단으로 올리지 못합니다.
+- `decide.mjs`: **다른 파일을 불러오지 않고 혼자 동작하며 `decide(alert)` 하나만 내보냅니다.** `{ action, confidence, reason }`을 돌려주고 0.85 이상 `block`, 0.5 이상 `alert`, 그 아래 `record`입니다. T1110 표시가 있는 경보 중 규칙 수준이 높거나(10 이상), 실패 건수가 많거나(15 이상), 여러 계정에 걸치면 차단 후보로 봅니다. 애매한 경보에만 환경변수 `JEV_API_URL`(선택)이 있을 때 Jev에 묻고, 없거나 응답이 없으면 `alert`입니다. Jev는 애매한 경보를 차단으로 올리지 못합니다.
 - `apply.mjs`: 차단 후보만 만료 시각과 근거 경보 번호가 붙은 거부 규칙(`block-rules.json`)으로 내보내고, 알림을 `xdr/alerts.log`에 한 줄씩 쌓습니다. 정상·알림 경보에도 나온 주소는 규칙에 넣지 않습니다.
 
 실행: `npm run xdr:run -- brute-force`(결과는 `xdr/brute-force/result.json`), `npm run xdr:apply`, 시험은 `node --test test/xdr-brute-force.test.mjs`.

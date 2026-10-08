@@ -7,20 +7,40 @@
       "id": "repeated-failures-same-source",
       "name": "같은 주소의 로그인 실패 연속",
       "verdict": "block",
-      "condition": "T1110 표시가 있고 규칙 수준 10 이상이며 로그인 실패가 30건 이상 쌓임",
-      "match": { "mitre": "T1110", "minLevel": 10, "minCount": 30 },
+      "condition": "T1110 표시가 있고 규칙 수준이 10 이상이거나 로그인 실패가 15건 이상 쌓임",
+      "match": {
+        "mitre": "T1110",
+        "anyOf": [
+          {
+            "minLevel": 10
+          },
+          {
+            "minCount": 15
+          }
+        ]
+      },
       "evidence": "MITRE ATT&CK T1110.001(Password Guessing): 같은 주소에서 짧은 시간에 로그인 실패가 연속으로 쌓이는 것은 비밀번호 추측의 대표 신호입니다."
     },
     {
       "id": "password-spraying",
       "name": "여러 계정에 같은 비밀번호 대입",
       "verdict": "block",
-      "condition": "T1110 표시가 있고 규칙 수준 10 이상이며 계정이 5개 이상이거나 설명에 여러 계정을 도는 표현이 있음",
+      "condition": "T1110 표시가 있고 계정이 5개 이상이거나 설명에 여러 계정을 도는 표현이 있음",
       "match": {
         "mitre": "T1110",
-        "minLevel": 10,
-        "minAccounts": 5,
-        "descriptionPatterns": ["여러 계정", "서로 다른 계정", "계정 이름을 바꿔", "계정 \\d+개"]
+        "anyOf": [
+          {
+            "minAccounts": 5
+          },
+          {
+            "descriptionPatterns": [
+              "여러 계정",
+              "서로 다른 계정",
+              "계정 이름을 바꿔",
+              "계정 \\d+개"
+            ]
+          }
+        ]
       },
       "evidence": "MITRE ATT&CK T1110.003(Password Spraying): 한 주소가 많은 계정에 같은 비밀번호를 번갈아 넣는 것은 잠금을 피하려는 대입 공격의 알려진 형태입니다."
     },
@@ -29,7 +49,11 @@
       "name": "낮은 수준의 로그인 실패 신호",
       "verdict": "alert",
       "condition": "T1110 표시가 있고 규칙 수준이 5 이상 9 이하",
-      "match": { "mitre": "T1110", "minLevel": 5, "maxLevel": 9 },
+      "match": {
+        "mitre": "T1110",
+        "minLevel": 5,
+        "maxLevel": 9
+      },
       "evidence": "MITRE ATT&CK T1110: 실패 몇 건만으로는 오타와 공격을 구분하기 어려워 막지 않고 알림만 남깁니다."
     }
   ]

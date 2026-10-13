@@ -45,6 +45,9 @@ export function createRestoreApi({ verify, db }) {
       const who = await verify(request.headers?.authorization);
       if (!who) return send(response, 401, { error: 'LOGIN_REQUIRED', message: '로그인이 필요합니다.' });
       const body = request.body && typeof request.body === 'object' && !Array.isArray(request.body) ? request.body : {};
+      // 요청 모양 기록: 경로 항목과 본문의 항목 이름만 남기고, 값·토큰·메모 내용은 남기지 않습니다.
+      console.info('restore request shape', JSON.stringify({ path: typeof request.query?.id, queryKeys: Object.keys(request.query ?? {}).slice(0, 10),
+        bodyKeys: Object.keys(body).slice(0, 20), who: who.kind ?? 'student' }));
       // 복원할 메모는 한 건뿐입니다. 경로의 ID를 쓰고, 경로가 ':id' 그대로 오면 본문의 id를 씁니다. 둘 다 있으면 같아야 합니다.
       const fromPath = request.query?.id;
       const fromBody = body.id;

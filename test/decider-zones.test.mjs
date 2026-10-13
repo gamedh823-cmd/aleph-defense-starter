@@ -16,12 +16,12 @@ test('심판이 읽는 allowedRoutes와 판정기의 구역 표가 똑같다', (
 });
 
 test('구역이 붙은 읽기 경로의 정상 요청은 허용된다', async () => {
-  for (const [route, path] of [
-    ['GET /my/notes', '/my/notes'], ['GET /api/my/notes', '/api/my/notes'],
-    ['GET /notes/:id', `/notes/${ID}`], ['GET /api/notes/:id', `/api/notes/${ID}`],
-    ['GET /notes/:id', '/notes/demo'], ['GET /notices', '/notices'], ['GET /api/notices', '/api/notices'],
+  for (const [service, route, path] of [
+    ['notes', 'GET /my/notes', '/my/notes'], ['notes', 'GET /api/my/notes', '/api/my/notes'],
+    ['notes', 'GET /notes/:id', `/notes/${ID}`], ['notes', 'GET /api/notes/:id', `/api/notes/${ID}`],
+    ['notes', 'GET /notes/:id', '/notes/demo'], ['notices', 'GET /notices', '/notices'], ['notices', 'GET /api/notices', '/api/notices'],
   ]) {
-    const result = await ask({ method: 'GET', route, path });
+    const result = await ask({ method: 'GET', service, route, path });
     assert.equal(result.decision, 'allow', route);
   }
 });
@@ -41,6 +41,12 @@ test('전체 목록·쓰기·알 수 없는 경로·기능 경로·쿼리는 거
     { route: 'GET /notes/:id', path: '/notes/demo', queryLength: 12 },
     { route: 'GET /my/notes', path: '/my/notes', queryLength: 8 },
     { route: 'GET /notes/:id', method: 'PUT', path: '/notes/demo' },
+    // 서비스와 경로가 어긋난 구역 넘기
+    { service: 'notices', route: 'GET /notes/:id', path: `/notes/${ID}` },
+    { service: 'notes', route: 'GET /notices', path: '/notices' },
+    { service: 'notes', route: 'GET /api/notices', path: '/api/notices' },
+    { service: 'admin', route: 'GET /notes/:id', path: `/notes/${ID}` },
+    { service: undefined },
     { route: undefined },
   ];
   for (const change of cases) {

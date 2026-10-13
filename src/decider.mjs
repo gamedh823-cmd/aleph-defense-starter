@@ -18,14 +18,15 @@ const ITEM_ID = /^[A-Za-z0-9_-]{1,64}$/u;
 const FEATURE_WORDS = Object.freeze(['export', 'import', 'all', 'bulk', 'admin', 'search', 'batch', 'backup', 'dump', 'list']);
 // 엔진 경로는 '/notes', 설정의 선언 경로는 '/api/notes' 모양일 수 있어 앞의 /api만 맞춰 비교합니다.
 const stripApi = (text) => text.replace(/^(?:([A-Z]+) )?\/api(?=\/)/u, (_, method) => (method ? `${method} ` : ''));
-const NORMAL_ROUTES = new Set(ZONE_ROUTES.map(({ method, pathPattern }) => `${method} ${stripApi(pathPattern)}`));
+// 구역은 (service, method, 경로) 세 가지가 표와 함께 맞아야 열립니다. 서비스와 경로가 어긋난 요청은 구역을 넘는 요청입니다.
+const NORMAL_ROUTES = new Set(ZONE_ROUTES.map(({ service, method, pathPattern }) => `${service} ${method} ${stripApi(pathPattern)}`));
 
 function zoneRouteAllowed(request) {
   if (typeof request?.route !== 'string' || typeof request?.method !== 'string'
-      || typeof request?.path !== 'string') return false;
+      || typeof request?.path !== 'string' || typeof request?.service !== 'string') return false;
   const route = request.route.startsWith(`${request.method} `) ? stripApi(request.route) : '';
   const path = stripApi(request.path);
-  if (!NORMAL_ROUTES.has(route)) return false;
+  if (!NORMAL_ROUTES.has(`${request.service} ${route}`)) return false;
   // 쿼리로 기능을 고르지 못하게 쿼리가 있는 요청은 허용하지 않습니다.
   if (request.queryLength !== 0) return false;
   if (!route.endsWith('/:id')) return path === route.slice(request.method.length + 1);

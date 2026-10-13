@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "note": "9단계까지 검증한 안전 정책 사본(가상 실습용)",
+  "policy": {
+    "allowedRoutes": [
+      {
+        "service": "notes",
+        "method": "GET",
+        "pathPattern": "/api/my/notes",
+        "zone": "my-notes"
+      },
+      {
+        "service": "notes",
+        "method": "GET",
+        "pathPattern": "/notes/:id",
+        "zone": "my-notes"
+      },
+      {
+        "service": "notes",
+        "method": "GET",
+        "pathPattern": "/api/notes/:id",
+        "zone": "my-notes"
+      },
+      {
+        "service": "notices",
+        "method": "GET",
+        "pathPattern": "/api/notices",
+        "zone": "class-notices"
+      }
+    ],
+    "ruleIds": [
+      "device_registered",
+      "step_up_required",
+      "zone_routes",
+      "zone_owner"
+    ]
+  },
+  "sha256": "e99e03417573f25800f7bece43da0ca368c2c83b1443df791805b77121995d3b"
+}

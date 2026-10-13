@@ -33,6 +33,12 @@ export function deploymentIdentity(env, config) {
       originalApiUrl = url.href;
     }
   } catch { /* 5단계 이전에는 없는 값입니다. */ }
+  // 10단계: 복구 경로 한 건({service, method, pathPattern})만 공개합니다. 모양이 다르면 공개하지 않습니다.
+  const restore = config.restoreRoute;
+  const restoreRoute = restore && typeof restore === 'object' && !Array.isArray(restore)
+    && Object.keys(restore).sort().join(',') === 'method,pathPattern,service'
+    && restore.method === 'POST' && text(restore.service) && /^\/api\/[A-Za-z0-9/:_-]{1,100}$/u.test(restore.pathPattern)
+    ? { service: restore.service, method: restore.method, pathPattern: restore.pathPattern } : undefined;
   return {
     schema: 'aleph.defense.deployment.v1',
     step: config.step,
@@ -43,5 +49,6 @@ export function deploymentIdentity(env, config) {
     sampleMarker: config.sampleMarker,
     ...(allowedRoutes.length ? { allowedRoutes } : {}),
     ...(originalApiUrl ? { originalApiUrl } : {}),
+    ...(restoreRoute ? { restoreRoute } : {}),
   };
 }

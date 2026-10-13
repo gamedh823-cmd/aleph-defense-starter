@@ -44,7 +44,28 @@
 
 한계: 연습 경보의 규칙 수준·반복 횟수·설명 표기를 기준으로 하며 실제 웹 로그나 Wazuh 운영 환경에서 검증하지 않았습니다. 거부 규칙의 만료 시각은 근거 경보 시각에서 60분 뒤입니다.
 
-## 9단계: 도플갱어를 찾고 권한을 거둡니다 (현재 단계)
+## 10단계: 백업에서 자료실을 되살립니다 (현재 단계)
+
+작동하는 기능
+- **메모 사본**: `db/backup-restore.sql`의 트리거가 메모가 만들어질 때 사본(`defense_memo_backups`: ID·소유자·제목·본문·내용 해시)을 한 번만 남깁니다. 해시는 `sha256(메모ID|소유자ID|제목|본문)`이고, 수정·삭제는 사본에 영향을 주지 않습니다. 사본은 서버(`service_role`)가 읽기만 할 수 있고, 감사 기록(`defense_audit`)은 추가·조회만 됩니다. `anon`·`authenticated`는 두 테이블 모두 직접 권한이 없습니다. 한계: 사본은 **만들어진 시점의 내용**이라, 정상 수정한 내용은 복원하면 처음 내용으로 돌아갑니다.
+- **복구 경로**: 서비스 `notes`, `POST /api/restore/:id`(`src/restore.mjs`, `api/restore/[id].js`). 로그인한 소유자만 부를 수 있고, 지정한 메모 **한 건만** 복원합니다. 사본의 ID·소유자·내용 해시를 다시 계산해 대조하고, 사본이 없거나 남의 메모면 404, 해시가 틀리면 409, 현재 메모의 소유자가 사본과 다르면 덮어쓰지 않고 409입니다. 이미 같은 내용이면 바꾸지 않습니다. 다른 메모와 감사 기록은 건드리지 않고, 복구 사실만 감사 기록에 추가합니다(메모 내용은 기록·응답에 없음). 이 경로는 `aleph.config.json`의 `restoreRoute`에 있고 빌드가 `/aleph.json`에도 공개합니다.
+- **정책 사본**: `policy/safe-policy.v1.json`(9단계까지 검증한 선언 경로와 판정 규칙 이름, 해시 포함). `npm run policy:diff`가 사본과 현재 정책의 차이를 보여 주고, `npm run policy:restore`는 같은 차이를 보여 준 뒤 `--yes`를 붙일 때만 `aleph.config.json`의 `allowedRoutes`만 되돌립니다. 사본이 없거나 해시 검증에 실패하면 중단합니다. 판정 규칙(코드)은 git으로 되돌리며 이 도구가 고치지 않습니다.
+
+다시 실행하는 방법
+1. **배포(push)보다 먼저** SQL Editor에서 `db/backup-restore.sql`을 실행하고 마지막 표를 확인합니다(`backups`가 `memos` 이상, 나머지 네 값은 모두 `false`).
+2. 시험: `node --test test/restore-api.test.mjs`, `node --test test/policy-restore.test.mjs`
+3. 복구 뒤 1~9단계 재시험 순서(실행하지 않은 것은 미실행으로 둡니다):
+   1. `npm run policy:diff` → 선언 경로·규칙 차이 0개 확인
+   2. `npm run decider:test`, `npm run fixture:7` (6·7단계)
+   3. `node --test test/decider-zones.test.mjs`, `npm run test:notes` (8단계 구역, 3·4단계 로그인·소유자)
+   4. `npm run detect:test`, `node --test test/detect.test.mjs` (9단계)
+   5. `npm run test:r5`, `npm run test:auth` (공통)
+   6. 배포 후 `npm run bundle`의 직접 점검(비로그인·가짜 토큰·복구 경로 비로그인 거부)
+   - 배포된 사이트에서 시험 계정 B 토큰으로 변조·삭제 뒤 복구를 부르는 시험과 1~9단계 전체 재공격은 이 저장소에서 보내지 않았습니다(**미실행**, 심판이 확인).
+
+한계: 복구는 사본이 있는 메모만 되살리며 사본이 생기기 전에 사라진 메모는 되살릴 수 없습니다. 시험은 메모리 DB 연습이며 심판 판정이 아닙니다.
+
+## 9단계: 도플갱어를 찾고 권한을 거둡니다 (지난 단계)
 
 작동하는 기능
 - `src/detect.mjs`의 `detect(events)`: 사건에서 시각(`at`)·요청 종류(`method`)·가명 사용자(`identity.sub`)만 읽습니다. 메모 내용·토큰·실명은 읽지도 저장하지도 않고, GET이 아니거나 모양이 틀린 사건은 세지 않습니다.

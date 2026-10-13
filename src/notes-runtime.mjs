@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js';
 import config from '../aleph.config.json' with { type: 'json' };
 import { createNotesApi } from './notes-api.mjs';
+import { createRestoreApi } from './restore.mjs';
 import { createLoginVerifier } from './verify-login.mjs';
 
 const TABLE = 'defense_memos';
@@ -65,11 +66,26 @@ function makeDb(client) {
       if (error) throw error;
       return data.length > 0;
     },
+    // 10단계: 사본(읽기 전용)과 감사 기록(추가만). 복원은 지정한 메모 한 건의 upsert뿐입니다.
+    async getBackup(id) {
+      const { data, error } = await client.from('defense_memo_backups')
+        .select('memo_id, owner_id, title, body, content_sha256').eq('memo_id', id).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    async restoreMemo(row) {
+      const { error } = await client.from(TABLE).upsert({ ...row, zone: 'memo' }, { onConflict: 'id' });
+      if (error) throw error;
+    },
+    async audit(entry) {
+      const { error } = await client.from('defense_audit').insert(entry);
+      if (error) throw error;
+    },
   };
 }
 
 // 설정이 빠졌거나 틀리면 null을 돌려주고, 호출한 쪽이 503으로 답합니다.
-export function getNotesApi() {
+function build() {
   if (cached !== undefined) return cached;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
@@ -77,13 +93,17 @@ export function getNotesApi() {
     if (!url || !key) throw new Error('missing_environment');
     const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
     const verify = createLoginVerifier({ config, supabaseSecretKey: key });
-    cached = createNotesApi({ verify, db: makeDb(client) });
+    const db = makeDb(client);
+    cached = { notes: createNotesApi({ verify, db }), restore: createRestoreApi({ verify, db }) };
   } catch (error) {
     console.error('notes api not configured', error?.message ?? 'unknown');
     cached = null;
   }
   return cached;
 }
+
+export const getNotesApi = () => build()?.notes ?? null;
+export const getRestoreApi = () => build()?.restore ?? null;
 
 export function notConfigured(response) {
   response.setHeader('Cache-Control', 'no-store');

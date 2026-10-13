@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -77,6 +77,21 @@ export async function runAttackChecks(config) {
         observed: '미실행: 가상 도플갱어 사건은 심판이 보내며 학생 쪽 점검에서는 보내지 않음 (가상 연습은 npm run detect:test)' });
       extra.push({ attackId: 'revocation_enforced', expected: '회수 제안 뒤 같은 신원의 다음 요청이 거부됨',
         observed: '미실행: 실제 회수와 경과 시간은 운영 엔진·심판이 확인하며 이 저장소에는 회수 API가 없음' });
+    }
+    if (config.step >= 10) {
+      // 10단계: 복구 경로는 로그인한 소유자만 부를 수 있습니다. 비로그인 요청이 거부되는지만 실제로 보냅니다.
+      const restore = await fetch(new URL('/api/restore/11111111-1111-4111-8111-111111111111', app), {
+        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
+      });
+      let restoreJson = false;
+      try { restoreJson = typeof (await restore.json())?.error === 'string'; } catch { /* 비JSON은 실패 */ }
+      extra.push({ attackId: 'restore_requires_login', expected: '로그인 없이 복구 경로를 호출하면 401과 JSON 오류',
+        observed: [401, 403].includes(restore.status) && restoreJson
+          ? `거부됨 (HTTP ${restore.status}, JSON 오류)` : `거부되지 않음 (HTTP ${restore.status})` });
+      extra.push({ attackId: 'restore_one_memo_verified', expected: '시험 계정 B의 변조·삭제된 메모 한 건이 사본의 ID·소유자·해시와 같게 복원됨',
+        observed: '미실행: 시험 계정 B의 토큰이 없어 보내지 않음 (복원 로직 단위 시험은 node --test test/restore-api.test.mjs)' });
+      extra.push({ attackId: 'replay_steps_1_to_9', expected: '복구 직후 1~9단계의 대표 공격 요청이 다시 거부됨',
+        observed: '미실행: 1~9단계 전체 재시험은 심판이 보내며 학생 쪽 점검은 비로그인·가짜 토큰 요청만 보냄' });
     }
     return [
       { attackId: 'no_token_list', expected: '로그인 없이 메모 목록을 요청하면 401 또는 403과 JSON 오류',

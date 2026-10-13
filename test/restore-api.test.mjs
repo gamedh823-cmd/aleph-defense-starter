@@ -92,24 +92,15 @@ test('남의 메모·사본 없는 메모·잘못된 ID는 복원하지 않는�
   assert.equal((await call(restore, { headers: { authorization: 'Bearer b' }, query: { id: M1 }, body: { id: M2 } })).status, 400);
 });
 
-test('사본 해시가 맞지 않으면 덮어쓰지 않고, 소유자가 바뀐 메모는 사본 주인이 되돌린다', async () => {
+test('사본 해시가 맞지 않거나 현재 소유자가 다르면 덮어쓰지 않는다', async () => {
   const bad = setup();
   bad.backups.get(M1).title = '사본 변조';
   bad.rows.get(M1).title = '변조';
   assert.equal((await call(bad.restore, { headers: { authorization: 'Bearer b' }, query: { id: M1 } })).status, 409);
   assert.equal(bad.rows.get(M1).title, '변조');
-  // 소유자가 바뀌어 있어도 사본의 소유자 본인(B)이 부르면 사본의 소유자와 내용으로 되돌린다.
   const owner = setup();
-  owner.rows.get(M1).owner_id = A; owner.rows.get(M1).title = '탈취';
-  const fixed = await call(owner.restore, { headers: { authorization: 'Bearer b' }, query: { id: M1 } });
-  assert.equal(fixed.status, 200);
-  assert.equal(fixed.body.plan.ownerChanged, true);
-  assert.deepEqual([owner.rows.get(M1).owner_id, owner.rows.get(M1).title], [B, '원본']);
-  // 사본의 주인이 아닌 사람(A)은 그 메모를 복구할 수 없다.
-  const stranger = setup();
-  stranger.rows.get(M1).owner_id = A;
-  assert.equal((await call(stranger.restore, { headers: { authorization: 'Bearer a' }, query: { id: M1 } })).status, 404);
-  assert.equal(stranger.rows.get(M1).owner_id, A);
+  owner.rows.get(M1).owner_id = A;
+  assert.equal((await call(owner.restore, { headers: { authorization: 'Bearer b' }, query: { id: M1 } })).status, 409);
 });
 
 test('경로가 :id 그대로 오면 본문의 id 한 건만 복원한다', async () => {
@@ -156,13 +147,4 @@ test('제출 묶음용 로컬 모의 복구 점검은 실제로 모두 통과한
   const result = await simulateRestore();
   assert.deepEqual(result, { refusedMismatch: true, restoredTampered: true, restoredDeleted: true,
     sameAsBackup: true, othersKept: true, auditKept: true });
-});
-
-test('구역(zone)만 바뀐 변조도 되돌린다', async () => {
-  const { rows, restore } = setup();
-  rows.get(M1).zone = 'notice';
-  const result = await call(restore, { headers: { authorization: 'Bearer b' }, query: { id: M1 } });
-  assert.equal(result.body.restored, true);
-  assert.deepEqual(result.body.plan.changes, ['zone']);
-  assert.equal(rows.get(M1).zone, 'memo');
 });

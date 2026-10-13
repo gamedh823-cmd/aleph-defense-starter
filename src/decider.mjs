@@ -5,16 +5,13 @@
 // 8단계: 엔진이 확인한 method·route·path만 보고 정확히 허용한 자료 경로 밖은 거부합니다.
 export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required', 'zone_routes', 'zone_owner']);
 
-// 자원 경로 목록(구역별 읽기 전용 + 10단계 복구 경로 한 건). aleph.config.json의 allowedRoutes와 똑같아야 하며
-// test/decider-zones.test.mjs가 대조합니다. 전체 목록과 그 밖의 쓰기 경로는 선언하지도 허용하지도 않습니다.
-// 복구 경로(POST /api/restore/:id)가 판정기에서 막히면 요청이 자료 API까지 닿지 못하므로 정확히 이 한 건만 허용합니다.
-// 소유자·강사 권한과 사본 검증은 자료 API(복구 경로)가 DB 값으로 다시 확인합니다.
+// 자원 경로 목록(구역별 읽기 전용). aleph.config.json의 allowedRoutes와 똑같아야 하며 test/decider-zones.test.mjs가 대조합니다.
+// 전체 목록·쓰기 경로는 선언하지도 허용하지도 않습니다. 소유자·강사 권한은 자료 API가 DB 값으로 다시 확인합니다.
 export const ZONE_ROUTES = Object.freeze([
   { service: 'notes', method: 'GET', pathPattern: '/api/my/notes', zone: 'my-notes' },
   { service: 'notes', method: 'GET', pathPattern: '/notes/:id', zone: 'my-notes' },
   { service: 'notes', method: 'GET', pathPattern: '/api/notes/:id', zone: 'my-notes' },
   { service: 'notices', method: 'GET', pathPattern: '/api/notices', zone: 'class-notices' },
-  { service: 'notes', method: 'POST', pathPattern: '/api/restore/:id', zone: 'my-notes' },
 ].map(Object.freeze));
 const ITEM_ID = /^[A-Za-z0-9_-]{1,64}$/u;
 // :id 자리에 기능 이름이 들어오면 자료 ID가 아니라 기능 경로이므로 거부합니다.
@@ -33,10 +30,8 @@ function zoneRouteAllowed(request) {
   // 쿼리로 기능을 고르지 못하게 쿼리가 있는 요청은 허용하지 않습니다.
   if (request.queryLength !== 0) return false;
   if (!route.endsWith('/:id')) return path === route.slice(request.method.length + 1);
-  // ':id' 자리는 선언한 경로의 앞부분(예: /notes/, /restore/) 바로 뒤의 한 칸이며 자료 ID여야 합니다.
-  const prefix = route.slice(request.method.length + 1, -':id'.length);
-  const segment = path.startsWith(prefix) ? path.slice(prefix.length) : '';
-  return ITEM_ID.test(segment) && !FEATURE_WORDS.includes(segment.toLowerCase());
+  const match = /^\/notes\/([^/]+)$/u.exec(path);
+  return Boolean(match && ITEM_ID.test(match[1]) && !FEATURE_WORDS.includes(match[1].toLowerCase()));
 }
 
 // 엔진이 검증해 넘긴 신호 출처만 믿습니다. 실제 경로의 'none'이나 알 수 없는 출처는 근거로 쓰지 않습니다.

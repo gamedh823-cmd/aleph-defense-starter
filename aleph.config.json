@@ -42,10 +42,5 @@
     }
   ],
   "originalApiUrl": "https://fqiifekzzzpjtppkkcic.supabase.co/rest/v1/defense_memos",
-  "restoreRoute": {
-    "service": "notes",
-    "method": "POST",
-    "pathPattern": "/api/restore/:id",
-    "zone": "my-notes"
-  }
+  "restoreRoute": "POST /api/restore/:id"
 }

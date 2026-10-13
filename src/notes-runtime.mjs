@@ -24,6 +24,11 @@ function makeDb(client) {
       if (error) throw error;
       return data;
     },
+    async listNotices() {
+      const { data, error } = await client.from(TABLE).select(COLUMNS).eq('zone', 'notice').order('created_at');
+      if (error) throw error;
+      return data;
+    },
     async isInstructor(userId) {
       const { data, error } = await client.from('defense_instructors').select('user_id')
         .eq('user_id', userId).maybeSingle();

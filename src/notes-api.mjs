@@ -109,5 +109,16 @@ export function createNotesApi({ verify, db }) {
     });
   }
 
-  return { collection, item };
+  // 8단계: 선언한 읽기 전용 경로. 쓰기 요청은 405이고, 로그인한 사용자의 본인 메모와 반 공지만 돌려줍니다.
+  async function readOnly(request, response, read) {
+    if (request.method !== 'GET') {
+      response.setHeader('Allow', 'GET');
+      return send(response, 405, { error: 'METHOD_NOT_ALLOWED' });
+    }
+    return guarded(request, response, async (who) => send(response, 200, await read(who)));
+  }
+  const myNotes = (request, response) => readOnly(request, response, (who) => db.list(who.userId));
+  const notices = (request, response) => readOnly(request, response, () => db.listNotices());
+
+  return { collection, item, myNotes, notices };
 }

@@ -16,6 +16,7 @@ function memoryDb() {
     async list(owner) { return [...rows.values()].filter(r => r.owner_id === owner && r.zone === 'memo').map(pick); },
     async insert(row) { if (rows.has(row.id)) return 'duplicate'; rows.set(row.id, { zone: 'memo', ...row }); return 'created'; },
     async getRow(id) { const r = rows.get(id); return r ? { ...r } : null; },
+    async listNotices() { return [...rows.values()].filter(r => r.zone === 'notice').map(pick); },
     async isInstructor(userId) { return userId === C; },
     async updateNotice(id, fields) { const r = rows.get(id); if (!r || r.zone !== 'notice') return null; Object.assign(r, fields); return pick(r); },
     async update(id, owner, fields) { const r = rows.get(id); if (!r || r.owner_id !== owner || r.zone !== 'memo') return null; Object.assign(r, fields); return pick(r); },
@@ -130,4 +131,22 @@ test('8단계: 직접 API 요청으로도 다른 구역 자료는 나오지 않�
   assert.equal((await call(item, { method: 'PUT', headers: b, query: { id }, body: { title: 'x', role: 'instructor' } })).status, 404);
   assert.deepEqual((await call(collection, { method: 'GET', headers: b })).body, []);
   assert.equal((await call(item, { method: 'GET', headers: a, query: { id } })).body.title, 'A 메모');
+});
+
+test('8단계: 선언한 읽기 전용 경로는 로그인 필요, 본인 메모와 반 공지만, 쓰기는 405', async () => {
+  const { collection, myNotes, notices } = api();
+  const a = { authorization: 'Bearer a' };
+  const b = { authorization: 'Bearer b' };
+  assert.equal((await call(myNotes, { method: 'GET' })).status, 401);
+  assert.equal((await call(notices, { method: 'GET' })).status, 401);
+  await call(collection, { method: 'POST', headers: a, body: { title: 'A 메모', body: '비공개' } });
+  assert.deepEqual((await call(myNotes, { method: 'GET', headers: a })).body.map(n => n.title), ['A 메모']);
+  assert.deepEqual((await call(myNotes, { method: 'GET', headers: b })).body, []);
+  assert.deepEqual((await call(notices, { method: 'GET', headers: a })).body.map(n => n.title), ['공지']);
+  for (const handler of [myNotes, notices]) {
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const denied = await call(handler, { method, headers: a, body: { title: 'x' } });
+      assert.equal(denied.status, 405, method);
+    }
+  }
 });

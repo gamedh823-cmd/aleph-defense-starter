@@ -18,8 +18,12 @@ export function deploymentIdentity(env, config) {
       || !/^[A-Z0-9_]{1,80}$/u.test(config.sampleMarker)) {
     throw new Error('배포 식별 정보를 확인할 수 없습니다. Vercel 시스템 환경변수와 1단계 시작 틀을 확인하세요.');
   }
-  const allowedRoutes = Array.isArray(config.allowedRoutes)
-    && config.allowedRoutes.every(route => typeof route === 'string' && route.length <= 120)
+  // 8단계부터는 구역이 붙은 객체 경로({service, method, pathPattern, zone})도 공개합니다.
+  const text = value => typeof value === 'string' && value.length > 0 && value.length <= 120;
+  const routeOk = route => text(route) || (route && typeof route === 'object' && !Array.isArray(route)
+    && Object.keys(route).sort().join(',') === 'method,pathPattern,service,zone'
+    && text(route.service) && text(route.method) && text(route.pathPattern) && text(route.zone));
+  const allowedRoutes = Array.isArray(config.allowedRoutes) && config.allowedRoutes.every(routeOk)
     ? config.allowedRoutes : [];
   // 쿼리·비밀값 없는 HTTPS 원본 자료 경로만 공개합니다.
   let originalApiUrl;

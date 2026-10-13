@@ -5,22 +5,30 @@
 // 8단계: 엔진이 확인한 method·route·path만 보고 정확히 허용한 자료 경로 밖은 거부합니다.
 export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required', 'zone_routes', 'zone_owner']);
 
-// 자원 경로 목록. 구역(메모·공지)과 소유자·강사 권한은 자료 API가 DB 값으로 다시 확인합니다.
-const ALLOWED_ROUTES = Object.freeze(['GET /notes', 'POST /notes', 'GET /notes/:id', 'PUT /notes/:id', 'DELETE /notes/:id']);
+// 자원 경로 목록(구역별 읽기 전용). aleph.config.json의 allowedRoutes와 똑같아야 하며 test/decider-zones.test.mjs가 대조합니다.
+// 전체 목록·쓰기 경로는 선언하지도 허용하지도 않습니다. 소유자·강사 권한은 자료 API가 DB 값으로 다시 확인합니다.
+export const ZONE_ROUTES = Object.freeze([
+  { service: 'notes', method: 'GET', pathPattern: '/api/my/notes', zone: 'my-notes' },
+  { service: 'notes', method: 'GET', pathPattern: '/notes/:id', zone: 'my-notes' },
+  { service: 'notes', method: 'GET', pathPattern: '/api/notes/:id', zone: 'my-notes' },
+  { service: 'notices', method: 'GET', pathPattern: '/api/notices', zone: 'class-notices' },
+].map(Object.freeze));
 const ITEM_ID = /^[A-Za-z0-9_-]{1,64}$/u;
 // :id 자리에 기능 이름이 들어오면 자료 ID가 아니라 기능 경로이므로 거부합니다.
 const FEATURE_WORDS = Object.freeze(['export', 'import', 'all', 'bulk', 'admin', 'search', 'batch', 'backup', 'dump', 'list']);
+// 엔진 경로는 '/notes', 설정의 선언 경로는 '/api/notes' 모양일 수 있어 앞의 /api만 맞춰 비교합니다.
+const stripApi = (text) => text.replace(/^(?:([A-Z]+) )?\/api(?=\/)/u, (_, method) => (method ? `${method} ` : ''));
+const NORMAL_ROUTES = new Set(ZONE_ROUTES.map(({ method, pathPattern }) => `${method} ${stripApi(pathPattern)}`));
 
 function zoneRouteAllowed(request) {
   if (typeof request?.route !== 'string' || typeof request?.method !== 'string'
       || typeof request?.path !== 'string') return false;
-  // 엔진 경로는 '/notes', 설정의 허용 경로는 '/api/notes' 모양이라 앞의 /api만 맞춰 비교합니다.
-  const route = request.route.replace(/^([A-Z]+) \/api\//u, '$1 /');
-  const path = request.path.replace(/^\/api(?=\/)/u, '');
-  if (!ALLOWED_ROUTES.includes(route) || !route.startsWith(`${request.method} `)) return false;
+  const route = request.route.startsWith(`${request.method} `) ? stripApi(request.route) : '';
+  const path = stripApi(request.path);
+  if (!NORMAL_ROUTES.has(route)) return false;
   // 쿼리로 기능을 고르지 못하게 쿼리가 있는 요청은 허용하지 않습니다.
   if (request.queryLength !== 0) return false;
-  if (!route.endsWith('/:id')) return path === '/notes';
+  if (!route.endsWith('/:id')) return path === route.slice(request.method.length + 1);
   const match = /^\/notes\/([^/]+)$/u.exec(path);
   return Boolean(match && ITEM_ID.test(match[1]) && !FEATURE_WORDS.includes(match[1].toLowerCase()));
 }
@@ -68,7 +76,7 @@ const OWNER_MARK = /(?:learner|subject|user|student|tester)[-_]?[a-z0-9]+/gu;
 const squash = (text) => String(text).toLowerCase().replace(/[^a-z0-9]/gu, '');
 
 function zoneOwnerAllowed(request) {
-  const id = /^\/notes\/([^/]+)$/u.exec(request.path.replace(/^\/api(?=\/)/u, ''))?.[1];
+  const id = /^\/notes\/([^/]+)$/u.exec(stripApi(request.path))?.[1];
   if (id === undefined) return true; // 목록·추가는 경로에 자료 ID가 없습니다.
   const lower = id.toLowerCase();
   if (lower.startsWith('notice') && request.method !== 'GET') return false;

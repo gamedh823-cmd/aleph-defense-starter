@@ -1,0 +1,47 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "known-cve",
+  "source": "CVE-2021-44228 (Apache Log4j, Log4Shell) / MITRE ATT&CK T1190 Exploit Public-Facing Application",
+  "patterns": [
+    {
+      "id": "jndi-lookup-in-header",
+      "name": "머리글 속 원격 조회 구문",
+      "verdict": "block",
+      "condition": "요청 머리글(User-Agent 등)에 ${jndi:ldap://…} 같은 원격 조회 구문이 그대로 있음",
+      "match": { "fields": ["useragent", "referer", "headers"], "shape": "${jndi:<ldap|ldaps|rmi|dns|iiop>://" },
+      "evidence": "CVE-2021-44228: 로그에 기록되는 머리글 문자열 안의 ${jndi:…} 조회를 로그4j가 실제로 실행해 외부 코드를 내려받습니다. ATT&CK T1190."
+    },
+    {
+      "id": "jndi-lookup-in-url",
+      "name": "주소 인자 속 원격 조회 구문",
+      "verdict": "block",
+      "condition": "요청 주소·검색어·인자에 ${jndi:ldap://…} 같은 원격 조회 구문이 그대로 있음",
+      "match": { "fields": ["url", "args", "query"], "shape": "${jndi:<ldap|ldaps|rmi|dns|iiop>://" },
+      "evidence": "CVE-2021-44228: 주소 인자로 들어온 문자열도 서버가 기록하는 순간 조회가 실행되는 대표 악용 경로입니다. ATT&CK T1190."
+    },
+    {
+      "id": "jndi-lookup-obfuscated",
+      "name": "치환으로 가린 원격 조회 구문",
+      "verdict": "block",
+      "condition": "${lower:j}, ${::-j} 같은 치환을 풀면 원격 조회 구문이 됨",
+      "match": { "fields": ["url", "useragent", "headers"], "normalize": ["lower", "upper", "default"] },
+      "evidence": "CVE-2021-44228 공개 직후 단순 문자열 필터를 피하려고 퍼진 우회 표기이며, 풀면 같은 원격 조회가 됩니다. ATT&CK T1190."
+    },
+    {
+      "id": "scanner-trace",
+      "name": "알려진 취약점 점검 도구 흔적",
+      "verdict": "alert",
+      "condition": "요청 머리글·주소에 nuclei, log4j-scan 같은 알려진 점검 도구 이름이 있으나 조회 구문은 없음",
+      "match": { "fields": ["useragent", "url"], "tools": ["nuclei", "log4j-scan", "log4shell", "zgrab", "masscan", "interactsh"] },
+      "evidence": "ATT&CK T1190 의 사전 단계로 CVE-2021-44228 존재 여부를 훑는 도구의 알려진 이름입니다. 도구 이름만으로는 공격을 확정하지 않고 알립니다."
+    },
+    {
+      "id": "weak-cve-signal",
+      "name": "낮은 수준의 알려진 취약점 신호",
+      "verdict": "alert",
+      "condition": "T1190 표시가 있고 규칙 수준이 5 이상 9 이하이며 조회 구문 자체는 없음 (CVE 번호·jndi 단어만 있는 경우 포함)",
+      "match": { "mitre": "T1190", "minLevel": 5, "maxLevel": 9, "payload": false },
+      "evidence": "ATT&CK T1190: CVE 번호 검색이나 수업 단어처럼 실제 악용 구문이 없는 신호는 정상 입력과 구분하기 어려워 막지 않고 알림만 남깁니다."
+    }
+  ]
+}

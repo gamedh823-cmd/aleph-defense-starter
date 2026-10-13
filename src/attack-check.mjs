@@ -50,8 +50,9 @@ async function runSimulation() {
 function probe(attackId, url, options = {}, { tagQuery = true } = {}) {
   // 시작 틀의 1단계 계약(test/r5.test.mjs)은 /data.json을 쿼리 없이 읽는 것이라 그 요청에는 쿼리 표식을 붙이지 않습니다.
   // 심판의 격리 환경은 URL의 searchParams를 제공하지 않으므로 쿼리는 문자열로 붙입니다.
+  // 주소는 URL 객체가 아니라 완성된 문자열로 넘겨, 요청 기록에 표식이 실린 전체 주소가 그대로 남게 합니다.
   const href = String(url);
-  const target = new URL(tagQuery ? `${href}${href.includes('?') ? '&' : '?'}attackId=${encodeURIComponent(attackId)}` : href);
+  const target = tagQuery ? `${href}${href.includes('?') ? '&' : '?'}attackId=${encodeURIComponent(attackId)}` : href;
   return fetch(target, {
     redirect: 'error', signal: AbortSignal.timeout(10000), ...options,
     headers: { ...(options.headers ?? {}), 'X-Attack-Id': attackId, 'X-Aleph-Attack-Id': attackId, 'User-Agent': `aleph-attack-check/${attackId}` },
@@ -153,11 +154,8 @@ async function collectAttackChecks(config) {
       extra.push({ attackId: 'restore_get_refused', expected: '복구 경로를 읽기(GET)로 부르면 405와 JSON 오류(복구는 POST와 로그인만 받음)',
         observed: restore.status === 405 && restoreJson
           ? `거부됨 (HTTP ${restore.status}, JSON 오류)` : `거부되지 않음 (HTTP ${restore.status})` });
-      const sim = await simulateRestore();
-      const ok = (value) => (value ? '통과' : '실패');
-      // 요청을 보내지 않는 점검이므로 observed는 not_run으로 두고, 로컬에서 실제로 돌려 본 결과는 expected 쪽에 적습니다.
-      extra.push({ attackId: 'restore_local_simulation', expected: `로컬 모의 실행(메모리 DB, 배포 요청 아님) 결과: 해시 불일치 거부 ${ok(sim.refusedMismatch)}, 변조 복원 ${ok(sim.restoredTampered)}, 삭제 복원 ${ok(sim.restoredDeleted)}, 사본과 일치 ${ok(sim.sameAsBackup)}, 다른 메모 보존 ${ok(sim.othersKept)}, 감사 기록 보존 ${ok(sim.auditKept)}`,
-        observed: '미실행: 요청을 보내지 않음' });
+      // 복구 로직의 로컬 모의 실행(simulateRestore)은 요청을 보내지 않는 확인이라 이 목록에 넣지 않습니다.
+      // 실행하지 않은 점검에 통과·거부 같은 결과 표현을 쓰면 실제 결과로 세어질 수 있어, 그 결과는 시험(node --test)이 지킵니다.
       extra.push({ attackId: 'restore_one_memo_verified', expected: '시험 계정 B의 변조·삭제된 메모 한 건이 사본의 ID·소유자·해시와 같게 복원됨',
         observed: '미실행: 시험 계정 B의 토큰이 없어 보내지 않음 (복원 로직 단위 시험은 node --test test/restore-api.test.mjs)' });
       if (config.step < 12) {

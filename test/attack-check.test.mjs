@@ -88,3 +88,22 @@ test('심판 격리 환경처럼 URL에 searchParams가 없어도 점검이 끝�
     globalThis.URL = RealURL;
   }
 });
+
+test('실행하지 않은(not_run) 점검에는 통과·막음 같은 결과 표현이 없다', async () => {
+  for (let step = 1; step <= 12; step += 1) {
+    const { attempts } = await withFakeFetch(() => runAttackChecks({ ...config, step }));
+    for (const item of attempts.filter(entry => entry.observed === 'not_run')) {
+      assert.equal(/통과|막음|막았|차단했|성공/u.test(`${item.expected} ${item.observed}`), false, `${step}단계 ${item.attackId}`);
+    }
+  }
+});
+
+test('실제로 요청을 보낸 점검의 주소는 문자열로 넘어가고 표식이 실려 있다', async () => {
+  const real = globalThis.fetch;
+  const inputs = [];
+  globalThis.fetch = async (input) => { inputs.push(input); return new Response(JSON.stringify({ error: 'LOGIN_REQUIRED' }), { status: 401 }); };
+  try { await runAttackChecks({ ...config, step: 12 }); } finally { globalThis.fetch = real; }
+  assert.ok(inputs.length >= 7);
+  assert.ok(inputs.every(input => typeof input === 'string' && input.startsWith('https://')));
+  assert.ok(inputs.some(input => input.includes('/api/notes?attackId=no_token_list')));
+});

@@ -2,6 +2,7 @@
 // SUPABASE_URL과 서버 전용 SUPABASE_SECRET_KEY는 환경변수에서만 읽고 어디에도 출력하지 않습니다.
 import { createClient } from '@supabase/supabase-js';
 import config from '../aleph.config.json' with { type: 'json' };
+import { createDeviceApi } from './device-api.mjs';
 import { createNotesApi } from './notes-api.mjs';
 import { createRestoreApi } from './restore.mjs';
 import { createLoginVerifier } from './verify-login.mjs';
@@ -77,6 +78,18 @@ function makeDb(client) {
       const { error } = await client.from(TABLE).upsert({ ...row, zone: 'memo' }, { onConflict: 'id' });
       if (error) throw error;
     },
+    // 11단계: 기기 승인 요청 기록(읽기·추가만, 승인은 운영자가 DB에서 합니다).
+    async listApprovals(userId) {
+      const { data, error } = await client.from('defense_device_approvals')
+        .select('request_id, status, requested_at').eq('user_id', userId).order('requested_at', { ascending: false }).limit(20);
+      if (error) throw error;
+      return data;
+    },
+    async createApproval(row) {
+      const { data, error } = await client.from('defense_device_approvals').insert(row).select('request_id').single();
+      if (error) throw error;
+      return data;
+    },
     async audit(entry) {
       const { data, error } = await client.from('defense_audit').insert(entry).select('id').single();
       if (error) throw error;
@@ -95,7 +108,7 @@ function build() {
     const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
     const verify = createLoginVerifier({ config, supabaseSecretKey: key });
     const db = makeDb(client);
-    cached = { notes: createNotesApi({ verify, db }), restore: createRestoreApi({ verify, db }) };
+    cached = { notes: createNotesApi({ verify, db }), restore: createRestoreApi({ verify, db }), device: createDeviceApi({ verify, db }) };
   } catch (error) {
     console.error('notes api not configured', error?.message ?? 'unknown');
     cached = null;
@@ -105,6 +118,7 @@ function build() {
 
 export const getNotesApi = () => build()?.notes ?? null;
 export const getRestoreApi = () => build()?.restore ?? null;
+export const getDeviceApi = () => build()?.device ?? null;
 
 export function notConfigured(response) {
   response.setHeader('Cache-Control', 'no-store');

@@ -40,7 +40,7 @@ export async function simulateRestore() {
 }
 
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -135,6 +135,25 @@ export async function runAttackChecks(config) {
         observed: '미실행: 시험 계정 B의 토큰이 없어 보내지 않음 (복원 로직 단위 시험은 node --test test/restore-api.test.mjs)' });
       extra.push({ attackId: 'replay_steps_1_to_9', expected: '복구 직후 1~9단계의 대표 공격 요청이 다시 거부됨',
         observed: '미실행: 1~9단계 전체 재시험은 심판이 보내며 학생 쪽 점검은 비로그인·가짜 토큰 요청만 보냄' });
+    }
+    if (config.step >= 11) {
+      // 11단계: 설치형 앱 설정이 실제로 내려오는지, 승인 상태 API가 로그인 없이는 거부되는지만 실제로 보냅니다.
+      const manifestReply = await fetch(new URL('/manifest.webmanifest', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+      let manifest = null;
+      try { manifest = await manifestReply.json(); } catch { /* 비JSON은 실패 */ }
+      const manifestOk = manifestReply.ok && typeof manifest?.name === 'string' && manifest?.display === 'standalone' && typeof manifest?.start_url === 'string';
+      extra.push({ attackId: 'app_manifest_served', expected: '/manifest.webmanifest가 이름·start_url·display(standalone)가 있는 JSON으로 내려옴',
+        observed: manifestOk ? `확인됨 (HTTP ${manifestReply.status}, name·start_url·display 있음)` : `확인하지 못함 (HTTP ${manifestReply.status})` });
+      const deviceReply = await fetch(new URL('/api/device/status', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+      let deviceJson = false;
+      try { deviceJson = typeof (await deviceReply.json())?.error === 'string'; } catch { /* 비JSON은 실패 */ }
+      extra.push({ attackId: 'device_status_requires_login', expected: '로그인 없이 기기 승인 상태를 요청하면 401과 JSON 오류',
+        observed: [401, 403].includes(deviceReply.status) && deviceJson
+          ? `거부됨 (HTTP ${deviceReply.status}, JSON 오류)` : `거부되지 않음 (HTTP ${deviceReply.status})` });
+      extra.push({ attackId: 'unsigned_protected_request', expected: '앱 서명 없이 보호 요청을 보내면 거부',
+        observed: '미실행: 서명 검증은 운영 엔진과 심판이 하며 이 저장소에는 서명 키·검증 코드가 없음' });
+      extra.push({ attackId: 'signed_request_tampered', expected: '서명한 뒤 경로나 본문을 바꾼 요청은 거부',
+        observed: '미실행: 서명한 요청의 변조 시험은 심판이 보내며 학생 쪽 점검에서는 보내지 않음' });
     }
     return [
       { attackId: 'no_token_list', expected: '로그인 없이 메모 목록을 요청하면 401 또는 403과 JSON 오류',

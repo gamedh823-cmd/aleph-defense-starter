@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BYTE BACK | 자료실</title>
+  <meta name="description" content="승인된 기기에서만 열리는 가상 자료실입니다.">
+  <meta name="theme-color" content="#101a28">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="자료실">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon.svg">
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; }
     body { margin: 0; min-height: 100vh; background: #101a28; color: #ecf4ff; }
@@ -23,15 +30,19 @@
     li { border: 1px solid #51667c; border-radius: 14px; padding: 17px 19px; background: #1a2a3d; }
     li strong { display: block; font-size: 18px; margin-bottom: 5px; }
     li span { display: block; color: #bfd0e5; white-space: pre-wrap; margin-bottom: 10px; }
+    .offline { margin: 0 0 16px; padding: 12px 16px; border: 1px solid #ffd28a; border-radius: 12px; color: #ffe9c2; background: #5c431544; }
+    .device { margin: 18px 0; padding: 16px 18px; border: 1px solid #51667c; border-radius: 14px; background: #1a2a3d; }
+    .device p { margin: 8px 0 12px; font-size: 15px; }
     [hidden] { display: none !important; }
   </style>
 </head>
 <body>
   <main>
-    <div class="eyebrow">3차 침공 · 10단계 - 백업에서 자료실을 되살림</div>
+    <div class="eyebrow">3차 침공 · 11단계 - 나만의 접속 앱</div>
     <h1>자료실</h1>
-    <p>로그인한 계정만 자료를 볼 수 있습니다. 아래 기록은 모두 실습을 위해 만든 가상 자료입니다.</p>
-    <div class="notice">로그인은 신원 확인일 뿐입니다. 다른 사람의 자료를 막는 일은 다음 단계에서 이어집니다.</div>
+    <p>로그인하고 서버가 이 기기를 승인한 뒤에만 자료를 볼 수 있습니다. 아래 기록은 모두 실습을 위해 만든 가상 자료입니다.</p>
+    <div class="notice">앱으로 설치했다는 표시만으로 기기가 확인되지는 않습니다. 기기 승인은 서버가 정하고, 승인 전에는 자료가 표시되지 않습니다. 로그인 정보는 이 화면의 메모리에만 있어서 새로고침하면 다시 로그인해야 합니다. 기기 키와 토큰은 브라우저 저장소에 넣지 않습니다.</div>
+    <div id="offline" class="offline" role="status" hidden>오프라인입니다. 자료는 인터넷에 연결되어 승인된 기기로 확인된 뒤에만 볼 수 있고, 이 기기에는 저장되지 않습니다.</div>
     <div id="status" class="status" role="status" aria-live="polite"></div>
 
     <form id="login" hidden>
@@ -47,33 +58,31 @@
         <span id="who"></span>
         <button id="logout" type="button">로그아웃</button>
       </div>
-      <form id="add">
-        <label for="title">제목</label>
-        <input id="title" maxlength="200" required>
-        <label for="body">내용</label>
-        <textarea id="body" rows="3" maxlength="5000"></textarea>
-        <div class="row"><button type="submit">메모 추가</button></div>
-      </form>
-      <ul id="notes" aria-live="polite"></ul>
+      <section id="device" class="device" aria-live="polite">
+        <strong>기기 승인 상태: <span id="device-state">확인 중</span></strong>
+        <p id="device-help"></p>
+        <div class="row"><button id="device-request" type="button" hidden>이 기기 승인 요청</button></div>
+      </section>
+      <section id="vault" hidden>
+        <form id="add">
+          <label for="title">제목</label>
+          <input id="title" maxlength="200" required>
+          <label for="body">내용</label>
+          <textarea id="body" rows="3" maxlength="5000"></textarea>
+          <div class="row"><button type="submit">메모 추가</button></div>
+        </form>
+        <ul id="notes" aria-live="polite"></ul>
+      </section>
     </section>
   </main>
   <script type="module">
     // 이 화면에는 저장소 키가 없습니다. 로그인과 자료 요청은 모두 서버 함수(/api/...)로 보냅니다.
-    const STORAGE_KEY = 'defense-session';
+    // 로그인 정보와 기기 정보는 브라우저가 남기는 저장 공간(웹 저장소·쿠키 포함)에 넣지 않고 이 화면의 메모리에만 둡니다.
     const $ = (id) => document.getElementById(id);
     const status = (text) => { $('status').textContent = text; };
 
-    function readSession() {
-      try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
-    }
-    function saveSession(session) {
-      try {
-        if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-        else localStorage.removeItem(STORAGE_KEY);
-      } catch { /* 저장이 막혀 있어도 이번 화면에서는 동작합니다. */ }
-      memory = session;
-    }
-    let memory = readSession();
+    let memory = null;
+    function saveSession(session) { memory = session; }
 
     async function post(path, body) {
       const response = await fetch(path, {
@@ -150,13 +159,45 @@
       catch (error) { status(error.message); }
     }
 
+    // 기기 승인: 서버가 정한 상태(approved·pending·none)만 믿습니다. 설치 표시나 이 화면의 버튼으로 승인되지 않습니다.
+    const DEVICE_TEXT = {
+      checking: ['확인 중', '서버에서 이 계정의 기기 승인 상태를 확인하고 있습니다.'],
+      none: ['승인 전', '이 기기는 아직 승인되지 않아 자료를 표시하지 않습니다. 승인 요청을 보내면 서버에 요청 기록만 남고, 승인은 서버 운영자가 정합니다.'],
+      pending: ['승인 대기', '승인 요청이 서버에 기록되었습니다. 운영자가 승인하기 전까지 자료는 표시되지 않습니다.'],
+      approved: ['승인됨', '서버가 이 계정의 기기를 승인했습니다.'],
+      unavailable: ['확인 불가', '서버에서 승인 상태를 확인하지 못했습니다. 확인되기 전에는 자료를 표시하지 않습니다.'],
+    };
+    function renderDevice(state, requestId) {
+      const [label, help] = DEVICE_TEXT[state] ?? DEVICE_TEXT.unavailable;
+      $('device-state').textContent = label;
+      $('device-help').textContent = requestId && state === 'pending' ? `${help} (요청 번호 ${requestId})` : help;
+      $('device-request').hidden = state !== 'none';
+      $('vault').hidden = state !== 'approved';
+      if (state === 'approved') load(); else $('notes').replaceChildren();
+    }
+    async function checkDevice() {
+      renderDevice('checking');
+      try { const result = await api('/api/device/status'); renderDevice(result.state, result.requestId); }
+      catch { renderDevice('unavailable'); }
+    }
+    $('device-request').addEventListener('click', async () => {
+      try { const result = await api('/api/device/request', { method: 'POST', body: JSON.stringify({}) }); renderDevice(result.state, result.requestId); }
+      catch (error) { status(error.message); }
+    });
+
     function show(session) {
       const loggedIn = Boolean(session);
       $('login').hidden = loggedIn;
       $('app').hidden = !loggedIn;
       $('who').textContent = loggedIn ? `${session.email} 로그인됨` : '';
-      if (loggedIn) load(); else $('notes').replaceChildren();
+      if (loggedIn) checkDevice();
+      else { $('vault').hidden = true; $('notes').replaceChildren(); }
     }
+
+    const syncOnline = () => { $('offline').hidden = navigator.onLine; };
+    addEventListener('online', syncOnline);
+    addEventListener('offline', syncOnline);
+    syncOnline();
 
     $('login').addEventListener('submit', async (event) => {
       event.preventDefault();

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="자료실">
+  <rect width="512" height="512" rx="96" fill="#101a28"/>
+  <rect x="96" y="132" width="320" height="248" rx="28" fill="#1a2a3d" stroke="#8ad8df" stroke-width="16"/>
+  <circle cx="256" cy="256" r="44" fill="none" stroke="#8ad8df" stroke-width="16"/>
+  <path d="M256 300v48" stroke="#8ad8df" stroke-width="16" stroke-linecap="round"/>
+</svg>

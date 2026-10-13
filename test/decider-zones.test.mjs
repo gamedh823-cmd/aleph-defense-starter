@@ -43,3 +43,26 @@ test('미등록 기기는 경로와 상관없이 기존 규칙으로 거부된�
   assert.equal(result.reasonCode, 'device_not_registered');
   assert.ok(RULE_IDS.includes('zone_routes') && RULE_IDS.includes('step_up_required'));
 });
+
+test('다른 사용자 표시가 붙은 자료는 거부, 본인·표시 없는 자료는 허용된다', async () => {
+  const a = { subjectId: 'learner_a' };
+  assert.equal((await ask({ ...a, path: '/notes/memo-learner_a-1' })).decision, 'allow');
+  assert.equal((await ask({ ...a, path: '/notes/memo-learnera-1' })).decision, 'allow');
+  assert.equal((await ask({ ...a, path: '/notes/demo' })).decision, 'allow');
+  for (const [method, path] of [['GET', '/notes/memo-learner_b-1'], ['PUT', '/notes/memo-learner_b-1'], ['DELETE', '/notes/memo-user_b-1']]) {
+    const route = `${method} /notes/:id`;
+    const result = await ask({ ...a, method, route, path });
+    assert.equal(result.decision, 'deny', path);
+    assert.equal(result.reasonCode, 'zone_forbidden');
+    assert.deepEqual(result.ruleIds, ['zone_owner']);
+  }
+});
+
+test('강사 공지는 학생이 읽기만 되고 수정·삭제는 거부된다', async () => {
+  assert.equal((await ask({ path: '/notes/notice-1' })).decision, 'allow');
+  for (const method of ['PUT', 'DELETE']) {
+    const result = await ask({ method, route: `${method} /notes/:id`, path: '/notes/notice-1' });
+    assert.equal(result.decision, 'deny');
+    assert.equal(result.reasonCode, 'zone_forbidden');
+  }
+});

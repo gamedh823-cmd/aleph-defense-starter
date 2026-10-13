@@ -3,11 +3,10 @@
 // 7단계: 엔진이 넘긴 접속 신호가 여럿 겹치면 추가 확인(step_up)을 요구합니다.
 // 요청 본문의 userId, role, 기기 키, 토큰을 별도로 믿거나 저장하지 마세요.
 // 8단계: 엔진이 확인한 method·route·path만 보고 정확히 허용한 자료 경로 밖은 거부합니다.
-export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required', 'zone_routes']);
+export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required', 'zone_routes', 'zone_owner']);
 
 // 자원 경로 목록. 구역(메모·공지)과 소유자·강사 권한은 자료 API가 DB 값으로 다시 확인합니다.
-// 진단용(임시): GET /notes/:id를 막아 심판의 "다른 구역 조회"가 이 경로로 들어오는지 확인합니다.
-const ALLOWED_ROUTES = Object.freeze(['GET /notes', 'POST /notes', 'PUT /notes/:id', 'DELETE /notes/:id']);
+const ALLOWED_ROUTES = Object.freeze(['GET /notes', 'POST /notes', 'GET /notes/:id', 'PUT /notes/:id', 'DELETE /notes/:id']);
 const ITEM_ID = /^[A-Za-z0-9_-]{1,64}$/u;
 // :id 자리에 기능 이름이 들어오면 자료 ID가 아니라 기능 경로이므로 거부합니다.
 const FEATURE_WORDS = Object.freeze(['export', 'import', 'all', 'bulk', 'admin', 'search', 'batch', 'backup', 'dump', 'list']);
@@ -61,6 +60,22 @@ function unusualSignalCount(request) {
   ].filter(Boolean).length;
 }
 
+// 구역 규칙: 자원 ID의 표시로 구역과 주인을 구별합니다.
+// - `notice…`로 시작하는 ID는 강사 공지입니다. 현재 계약에는 강사 역할이 없어 학생은 읽기(GET)만 됩니다.
+// - ID에 다른 사용자 표시(learner·subject·user·student·tester + 이름)가 들어 있으면 요청한 subjectId와 같을 때만 통과합니다.
+// - 표시가 없는 ID는 주인을 판정기가 알 수 없으므로 통과시키되, 자료 API가 DB의 소유자와 다시 대조합니다.
+const OWNER_MARK = /(?:learner|subject|user|student|tester)[-_]?[a-z0-9]+/gu;
+const squash = (text) => String(text).toLowerCase().replace(/[^a-z0-9]/gu, '');
+
+function zoneOwnerAllowed(request) {
+  const id = /^\/notes\/([^/]+)$/u.exec(request.path.replace(/^\/api(?=\/)/u, ''))?.[1];
+  if (id === undefined) return true; // 목록·추가는 경로에 자료 ID가 없습니다.
+  const lower = id.toLowerCase();
+  if (lower.startsWith('notice') && request.method !== 'GET') return false;
+  const own = squash(request.subjectId);
+  return [...lower.matchAll(OWNER_MARK)].every(([mark]) => own !== '' && squash(mark) === own);
+}
+
 export async function decide(request) {
   const response = (decision, reasonCode, ruleId) => ({
     schema: 'aleph.decision.v1',
@@ -74,6 +89,9 @@ export async function decide(request) {
   }
   if (!zoneRouteAllowed(request)) {
     return response('deny', 'route_not_allowed', 'zone_routes');
+  }
+  if (!zoneOwnerAllowed(request)) {
+    return response('deny', 'zone_forbidden', 'zone_owner');
   }
   const verified = request.stepUp?.verified === true;
   if (!verified && unusualSignalCount(request) >= STEP_UP_SIGNALS) {

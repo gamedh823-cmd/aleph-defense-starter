@@ -10,15 +10,18 @@ const config = JSON.parse(readFileSync(new URL('../aleph.config.json', import.me
 async function withFakeFetch(run) {
   const real = globalThis.fetch;
   const methods = [];
+  const tags = [];
   globalThis.fetch = async (url, options = {}) => {
     methods.push(options.method ?? 'GET');
-    const path = new URL(url).pathname;
+    const target = new URL(url);
+    tags.push({ header: options.headers?.['X-Attack-Id'], alt: options.headers?.['X-Aleph-Attack-Id'], agent: options.headers?.['User-Agent'], query: target.searchParams.get('attackId') });
+    const path = target.pathname;
     if (path === '/manifest.webmanifest') return new Response(JSON.stringify({ name: 'x', display: 'standalone', start_url: '/' }), { status: 200 });
     if (path === '/data.json' || path === '/') return new Response(JSON.stringify({ notes: [] }), { status: 200 });
     if (path.startsWith('/api/restore/')) return new Response(JSON.stringify({ error: 'METHOD_NOT_ALLOWED' }), { status: 405 });
     return new Response(JSON.stringify({ error: 'LOGIN_REQUIRED' }), { status: 401 });
   };
-  try { return { attempts: await run(), methods }; } finally { globalThis.fetch = real; }
+  try { return { attempts: await run(), methods, tags }; } finally { globalThis.fetch = real; }
 }
 
 test('모든 단계에서 직접 점검은 1~20개이고 ID가 겹치지 않으며 형식이 맞다', async () => {
@@ -52,4 +55,19 @@ test('실행하지 못한 점검은 observed가 not_run이고 사유는 expected
   assert.equal(attempts.some(item => item.observed.startsWith('미실행')), false);
   // 실제로 보낸 점검은 not_run이 아니다.
   assert.notEqual(attempts.find(item => item.attackId === 'restore_get_refused').observed, 'not_run');
+});
+
+test('요청을 보낸 점검은 모두 자기 attackId가 붙은 요청 기록이 있고, 요청이 없는 점검은 not_run이다', async () => {
+  for (let step = 1; step <= 12; step += 1) {
+    const { attempts, tags } = await withFakeFetch(() => runAttackChecks({ ...config, step }));
+    for (const tag of tags) {
+      // 같은 점검 ID가 헤더·User-Agent·주소 쿼리에 모두 실려야 한다.
+      assert.ok(tag.header && tag.header === tag.alt && tag.header === tag.query && tag.agent === `aleph-attack-check/${tag.header}`, JSON.stringify(tag));
+    }
+    const logged = new Set(tags.map(tag => tag.header));
+    for (const item of attempts) {
+      if (item.observed === 'not_run') assert.equal(logged.has(item.attackId), false, `${step}단계 ${item.attackId}: 요청이 없는데 기록이 있음`);
+      else assert.equal(logged.has(item.attackId), true, `${step}단계 ${item.attackId}: 요청 기록이 없음`);
+    }
+  }
 });

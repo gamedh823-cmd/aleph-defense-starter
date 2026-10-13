@@ -45,6 +45,17 @@ async function runSimulation() {
   };
 }
 
+// 점검이 보내는 모든 요청에 그 점검의 attackId를 붙입니다(요청 헤더 X-Attack-Id·X-Aleph-Attack-Id, User-Agent, 주소 쿼리 attackId).
+// 그래야 실행 기록(어떤 요청이 어떤 점검의 것인지)을 대조할 수 있습니다. 읽기(GET) 요청만 보냅니다.
+function probe(attackId, url, options = {}) {
+  const target = new URL(url);
+  target.searchParams.set('attackId', attackId);
+  return fetch(target, {
+    redirect: 'error', signal: AbortSignal.timeout(10000), ...options,
+    headers: { ...(options.headers ?? {}), 'X-Attack-Id': attackId, 'X-Aleph-Attack-Id': attackId, 'User-Agent': `aleph-attack-check/${attackId}` },
+  });
+}
+
 // 제출 묶음은 읽기 요청만 보낼 수 있고, 실행하지 않은 점검은 observed를 not_run으로 둡니다(사유는 expected에 덧붙입니다).
 export async function runAttackChecks(config) {
   const attempts = await collectAttackChecks(config);
@@ -68,25 +79,23 @@ async function collectAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  const response = await fetch(new URL('/data.json', app), {
-    redirect: 'error', signal: AbortSignal.timeout(10000),
-  });
+  // 1~2단계의 공개 파일 점검에만 쓰는 요청입니다(3단계부터는 보내지 않습니다).
+  const response = config.step <= 2
+    ? await probe(config.step === 1 ? 'anonymous_note_read' : 'static_note_seed', new URL('/data.json', app)) : null;
   if (config.step >= 3) {
     // 3~5단계: 로그인 없이, 그리고 가짜 토큰으로 자료 API를 부르면 JSON 오류로 거부되어야 합니다.
-    const ask = async (headers) => {
-      const reply = await fetch(new URL('/api/notes', app), {
-        headers, redirect: 'error', signal: AbortSignal.timeout(10000),
-      });
+    const ask = async (attackId, headers) => {
+      const reply = await probe(attackId, new URL('/api/notes', app), { headers });
       let jsonError = false;
       try { jsonError = typeof (await reply.json())?.error === 'string'; } catch { /* 비JSON은 실패 */ }
       return { denied: [401, 403].includes(reply.status) && jsonError, status: reply.status };
     };
-    const anonymous = await ask({});
-    const forged = await ask({ Authorization: 'Bearer aaaaaaaa.bbbbbbbb.cccccccc' });
+    const anonymous = await ask('no_token_list', {});
+    const forged = await ask('forged_token_list', { Authorization: 'Bearer aaaaaaaa.bbbbbbbb.cccccccc' });
     const extra = [];
     if (config.step >= 5) {
       // 화면 파일에 서버 전용 키·공개 키가 없는지 실제로 내려받아 확인합니다. (값은 기록하지 않습니다.)
-      const page = await fetch(new URL('/', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+      const page = await probe('browser_bundle_keys', new URL('/', app));
       const html = await page.text();
       const leaked = /sb_(?:publishable|secret)_|eyJ[A-Za-z0-9_-]{12,}\.eyJ/u.test(html);
       extra.push({ attackId: 'browser_bundle_keys', expected: '첫 화면 파일에 Supabase 키가 없음',
@@ -94,8 +103,8 @@ async function collectAttackChecks(config) {
       // 원본 자료 API를 공개 키로 직접 부르는 시험은 공개 키가 환경변수에 있을 때만 실행합니다.
       const key = process.env.SUPABASE_PUBLISHABLE_KEY;
       if (key && typeof config.originalApiUrl === 'string') {
-        const direct = await fetch(`${config.originalApiUrl}?select=id&limit=1`, {
-          headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10000),
+        const direct = await probe('direct_origin_read', `${config.originalApiUrl}?select=id&limit=1`, {
+          headers: { apikey: key, Authorization: `Bearer ${key}` },
         });
         let rows = null;
         try { rows = await direct.json(); } catch { /* 비JSON은 거부로 봅니다. */ }
@@ -136,9 +145,7 @@ async function collectAttackChecks(config) {
     if (config.step >= 10) {
       // 10단계: 제출 묶음은 읽기(GET·HEAD) 요청만 보낼 수 있습니다. 복구 경로(POST 전용)를 읽기로 부르면 405로 거부되는지만 확인하고,
       // 로그인 없는 POST 복구 요청의 거부(401)는 쓰기 요청이라 이 점검에서 보내지 않습니다(npm run matrix가 보냅니다).
-      const restore = await fetch(new URL('/api/restore/11111111-1111-4111-8111-111111111111', app), {
-        method: 'GET', redirect: 'error', signal: AbortSignal.timeout(10000),
-      });
+      const restore = await probe('restore_get_refused', new URL('/api/restore/11111111-1111-4111-8111-111111111111', app), { method: 'GET' });
       let restoreJson = false;
       try { restoreJson = typeof (await restore.json())?.error === 'string'; } catch { /* 비JSON은 실패 */ }
       extra.push({ attackId: 'restore_get_refused', expected: '복구 경로를 읽기(GET)로 부르면 405와 JSON 오류(복구는 POST와 로그인만 받음)',
@@ -146,8 +153,9 @@ async function collectAttackChecks(config) {
           ? `거부됨 (HTTP ${restore.status}, JSON 오류)` : `거부되지 않음 (HTTP ${restore.status})` });
       const sim = await simulateRestore();
       const ok = (value) => (value ? '통과' : '실패');
-      extra.push({ attackId: 'restore_local_simulation', expected: '변조·삭제된 가상 메모 한 건이 사본의 ID·소유자·해시와 같게 복원되고, 다른 메모와 감사 기록은 그대로이며, 사본 해시가 다르면 복원하지 않음',
-        observed: `로컬 모의 실행(메모리 DB, 배포 요청 아님): 해시 불일치 거부 ${ok(sim.refusedMismatch)}, 변조 복원 ${ok(sim.restoredTampered)}, 삭제 복원 ${ok(sim.restoredDeleted)}, 사본과 일치 ${ok(sim.sameAsBackup)}, 다른 메모 보존 ${ok(sim.othersKept)}, 감사 기록 보존 ${ok(sim.auditKept)}` });
+      // 요청을 보내지 않는 점검이므로 observed는 not_run으로 두고, 로컬에서 실제로 돌려 본 결과는 expected 쪽에 적습니다.
+      extra.push({ attackId: 'restore_local_simulation', expected: `로컬 모의 실행(메모리 DB, 배포 요청 아님) 결과: 해시 불일치 거부 ${ok(sim.refusedMismatch)}, 변조 복원 ${ok(sim.restoredTampered)}, 삭제 복원 ${ok(sim.restoredDeleted)}, 사본과 일치 ${ok(sim.sameAsBackup)}, 다른 메모 보존 ${ok(sim.othersKept)}, 감사 기록 보존 ${ok(sim.auditKept)}`,
+        observed: '미실행: 요청을 보내지 않음' });
       extra.push({ attackId: 'restore_one_memo_verified', expected: '시험 계정 B의 변조·삭제된 메모 한 건이 사본의 ID·소유자·해시와 같게 복원됨',
         observed: '미실행: 시험 계정 B의 토큰이 없어 보내지 않음 (복원 로직 단위 시험은 node --test test/restore-api.test.mjs)' });
       if (config.step < 12) {
@@ -157,13 +165,13 @@ async function collectAttackChecks(config) {
     }
     if (config.step >= 11) {
       // 11단계: 설치형 앱 설정이 실제로 내려오는지, 승인 상태 API가 로그인 없이는 거부되는지만 실제로 보냅니다.
-      const manifestReply = await fetch(new URL('/manifest.webmanifest', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+      const manifestReply = await probe('app_manifest_served', new URL('/manifest.webmanifest', app));
       let manifest = null;
       try { manifest = await manifestReply.json(); } catch { /* 비JSON은 실패 */ }
       const manifestOk = manifestReply.ok && typeof manifest?.name === 'string' && manifest?.display === 'standalone' && typeof manifest?.start_url === 'string';
       extra.push({ attackId: 'app_manifest_served', expected: '/manifest.webmanifest가 이름·start_url·display(standalone)가 있는 JSON으로 내려옴',
         observed: manifestOk ? `확인됨 (HTTP ${manifestReply.status}, name·start_url·display 있음)` : `확인하지 못함 (HTTP ${manifestReply.status})` });
-      const deviceReply = await fetch(new URL('/api/device/status', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+      const deviceReply = await probe('device_status_requires_login', new URL('/api/device/status', app));
       let deviceJson = false;
       try { deviceJson = typeof (await deviceReply.json())?.error === 'string'; } catch { /* 비JSON은 실패 */ }
       extra.push({ attackId: 'device_status_requires_login', expected: '로그인 없이 기기 승인 상태를 요청하면 401과 JSON 오류',
@@ -176,7 +184,7 @@ async function collectAttackChecks(config) {
     }
     if (config.step >= 12) {
       // 12단계: 작전실 요약 API가 로그인 없이는 거부되는지만 실제로 보냅니다. 전체 재시험 표는 npm run matrix가 만듭니다.
-      const room = await fetch(new URL('/api/warroom/summary', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+      const room = await probe('warroom_requires_login', new URL('/api/warroom/summary', app));
       let roomJson = false;
       try { roomJson = typeof (await room.json())?.error === 'string'; } catch { /* 비JSON은 실패 */ }
       extra.push({ attackId: 'warroom_requires_login', expected: '로그인 없이 작전실 요약을 요청하면 401과 JSON 오류',
@@ -203,9 +211,7 @@ async function collectAttackChecks(config) {
         // 비JSON 응답은 확인 실패로 둡니다.
       }
     }
-    const api = await fetch(new URL('/api/notes', app), {
-      redirect: 'error', signal: AbortSignal.timeout(10000),
-    });
+    const api = await probe('anonymous_api_read', new URL('/api/notes', app));
     let apiOpen = false;
     if (api.ok) {
       try {

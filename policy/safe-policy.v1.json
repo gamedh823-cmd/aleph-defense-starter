@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "9단계까지 검증한 안전 정책 사본(가상 실습용)",
+  "note": "10단계 복구 경로 선언까지 검증한 안전 정책 사본(가상 실습용)",
   "policy": {
     "allowedRoutes": [
       {
@@ -26,6 +26,12 @@
         "method": "GET",
         "pathPattern": "/api/notices",
         "zone": "class-notices"
+      },
+      {
+        "service": "notes",
+        "method": "POST",
+        "pathPattern": "/api/restore/:id",
+        "zone": "restore"
       }
     ],
     "ruleIds": [
@@ -35,5 +41,5 @@
       "zone_owner"
     ]
   },
-  "sha256": "e99e03417573f25800f7bece43da0ca368c2c83b1443df791805b77121995d3b"
+  "sha256": "9f985d67f94ba66d90a7dc0801ea198667a5365eac04f3bab974b1d235b864a2"
 }

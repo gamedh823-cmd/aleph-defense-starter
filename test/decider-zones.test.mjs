@@ -10,8 +10,13 @@ const ID = '11111111-1111-4111-8111-111111111111';
 
 test('심판이 읽는 allowedRoutes와 판정기의 구역 표가 똑같다', () => {
   const config = JSON.parse(readFileSync(new URL('../aleph.config.json', import.meta.url), 'utf8'));
-  assert.deepEqual(config.allowedRoutes, ZONE_ROUTES.map(route => ({ ...route })));
-  assert.ok(config.allowedRoutes.every(route => route.method === 'GET' && route.zone), '쓰기 경로와 구역 없는 경로는 선언하지 않는다');
+  // 읽기 구역은 판정기 표와 똑같고, 쓰기 경로는 10단계 복구 경로 한 건(zone restore)뿐이다.
+  const reads = config.allowedRoutes.filter(route => route.zone !== 'restore');
+  assert.deepEqual(reads, ZONE_ROUTES.map(route => ({ ...route })));
+  assert.ok(reads.every(route => route.method === 'GET' && route.zone), '읽기 구역 밖의 쓰기 경로는 선언하지 않는다');
+  const writes = config.allowedRoutes.filter(route => route.method !== 'GET');
+  assert.deepEqual(writes, [{ ...config.restoreRoute }]);
+  assert.equal(config.restoreRoute.pathPattern, '/api/restore/:id');
   assert.ok(!config.allowedRoutes.some(route => route.pathPattern === '/api/notes'), '전체 목록 경로는 선언하지 않는다');
 });
 

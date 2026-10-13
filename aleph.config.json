@@ -33,12 +33,19 @@
       "method": "GET",
       "pathPattern": "/api/notices",
       "zone": "class-notices"
+    },
+    {
+      "service": "notes",
+      "method": "POST",
+      "pathPattern": "/api/restore/:id",
+      "zone": "restore"
     }
   ],
   "originalApiUrl": "https://fqiifekzzzpjtppkkcic.supabase.co/rest/v1/defense_memos",
   "restoreRoute": {
     "service": "notes",
     "method": "POST",
-    "pathPattern": "/api/restore/:id"
+    "pathPattern": "/api/restore/:id",
+    "zone": "restore"
   }
 }

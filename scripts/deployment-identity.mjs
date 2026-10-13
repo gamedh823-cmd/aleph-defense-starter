@@ -36,9 +36,10 @@ export function deploymentIdentity(env, config) {
   // 10단계: 복구 경로 한 건({service, method, pathPattern})만 공개합니다. 모양이 다르면 공개하지 않습니다.
   const restore = config.restoreRoute;
   const restoreRoute = restore && typeof restore === 'object' && !Array.isArray(restore)
-    && Object.keys(restore).sort().join(',') === 'method,pathPattern,service'
+    && ['method,pathPattern,service', 'method,pathPattern,service,zone'].includes(Object.keys(restore).sort().join(','))
     && restore.method === 'POST' && text(restore.service) && /^\/api\/[A-Za-z0-9/:_-]{1,100}$/u.test(restore.pathPattern)
-    ? { service: restore.service, method: restore.method, pathPattern: restore.pathPattern } : undefined;
+    ? { service: restore.service, method: restore.method, pathPattern: restore.pathPattern,
+      ...(text(restore.zone) ? { zone: restore.zone } : {}) } : undefined;
   return {
     schema: 'aleph.defense.deployment.v1',
     step: config.step,

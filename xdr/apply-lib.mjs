@@ -7,21 +7,22 @@ import { join } from 'node:path';
 export const TTL_MINUTES = 60;
 
 // 차단 후보만 규칙으로 만듭니다. 정상(record)·알림(alert) 경보에도 나온 주소는 정상 사용자일 수 있어 넣지 않습니다.
-export function buildBlockRules(items, moduleKey) {
-  const safeIps = new Set(items.filter((item) => item.decision.action !== 'block').map((item) => item.alert.data?.srcip));
+// field 는 규칙이 가리키는 주소 칸입니다. 기본은 출발 주소(srcip)이고, 외부 전송은 목적지(dstip)를 막습니다.
+export function buildBlockRules(items, moduleKey, field = 'srcip') {
+  const safeIps = new Set(items.filter((item) => item.decision.action !== 'block').map((item) => item.alert.data?.[field]));
   const bySource = new Map();
   for (const { alert, decision } of items) {
-    const ip = alert.data?.srcip;
+    const ip = alert.data?.[field];
     if (decision.action !== 'block' || !ip || safeIps.has(ip)) continue;
-    const entry = bySource.get(ip) ?? { srcip: ip, evidenceAlertIds: [], last: 0, reason: decision.reason };
+    const entry = bySource.get(ip) ?? { ip, evidenceAlertIds: [], last: 0, reason: decision.reason };
     entry.evidenceAlertIds.push(alert.id);
     entry.last = Math.max(entry.last, Date.parse(alert.timestamp) || 0);
     bySource.set(ip, entry);
   }
   return [...bySource.values()].map((entry) => ({
-    ruleId: `xdr.${moduleKey}.deny.${entry.srcip}`,
+    ruleId: `xdr.${moduleKey}.deny.${entry.ip}`,
     action: 'deny',
-    srcip: entry.srcip,
+    [field]: entry.ip,
     evidenceAlertIds: entry.evidenceAlertIds,
     expiresAt: new Date(entry.last + TTL_MINUTES * 60 * 1000).toISOString(),
     reason: entry.reason,
@@ -34,11 +35,11 @@ export function alertLines(items) {
     .map(({ alert, decision }) => [alert.timestamp, decision.action, alert.id, alert.data?.srcip ?? '-', decision.reason].join('\t'));
 }
 
-export async function applyModule({ root, moduleKey, alerts, decide }) {
+export async function applyModule({ root, moduleKey, alerts, decide, field = 'srcip' }) {
   const items = [];
   for (const alert of alerts) items.push({ alert, decision: await decide(alert) });
 
-  const rules = buildBlockRules(items, moduleKey);
+  const rules = buildBlockRules(items, moduleKey, field);
   const dir = join(root, 'xdr', moduleKey);
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, 'block-rules.json'), `${JSON.stringify({

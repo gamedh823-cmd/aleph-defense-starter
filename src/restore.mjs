@@ -68,16 +68,13 @@ export function createRestoreApi({ verify, db }) {
           verified: false, restored: false, problems, auditId: audited?.id ?? null, auditRecorded: Boolean(audited) });
       }
       const current = await db.getRow(id);
-      if (current && current.owner_id !== backup.owner_id) {
-        console.warn('restore refused', id, 'owner_mismatch');
-        const audited = await db.audit({ action: 'restore_refused', memo_id: id, owner_id: backup.owner_id, detail: { problems: ['current_owner'] } });
-        return send(response, 409, { error: 'OWNER_MISMATCH', message: '다른 소유자의 메모는 덮어쓰지 않습니다.',
-          verified: true, restored: false, auditId: audited?.id ?? null, auditRecorded: Boolean(audited) });
-      }
+      // 변조로 소유자가 바뀌었어도, 호출자가 검증된 사본의 소유자 본인이면 사본의 소유자와 내용으로 되돌립니다.
+      // (다른 사람의 사본은 위에서 이미 404로 멈췄습니다.)
       const before = current ? contentHash(current) : null;
       // 바뀔 항목(내용은 싣지 않습니다). dryRun이면 여기서 멈추고 아무것도 바꾸지 않습니다.
-      const plan = { existed: Boolean(current), unchanged: before === backup.content_sha256,
-        changes: current ? ['title', 'body'].filter(field => current[field] !== backup[field]) : ['create'] };
+      const plan = { existed: Boolean(current), ownerChanged: Boolean(current && current.owner_id !== backup.owner_id),
+        unchanged: before === backup.content_sha256 && current?.zone === 'memo',
+        changes: current ? ['owner_id', 'title', 'body'].filter(field => (field === 'owner_id' ? current.owner_id !== backup.owner_id : current[field] !== backup[field])).concat(current.zone === 'memo' ? [] : ['zone']) : ['create'] };
       const view = { id, ownerId: backup.owner_id, owner_id: backup.owner_id, verified: true,
         contentSha256: backup.content_sha256, backedUpAt: backup.backed_up_at ?? null, plan };
       if (body.dryRun === true || request.query?.dryRun === 'true') {
@@ -86,7 +83,7 @@ export function createRestoreApi({ verify, db }) {
       if (plan.unchanged) return send(response, 200, { ...view, restored: false });
       await db.restoreMemo({ id, owner_id: backup.owner_id, title: backup.title, body: backup.body });
       const audited = await db.audit({ action: 'restore', memo_id: id, owner_id: backup.owner_id,
-        detail: { existed: plan.existed, changes: plan.changes, beforeSha256: before, afterSha256: backup.content_sha256 } });
+        detail: { existed: plan.existed, ownerChanged: plan.ownerChanged, changes: plan.changes, beforeSha256: before, afterSha256: backup.content_sha256 } });
       return send(response, 200, { ...view, restored: true, auditId: audited?.id ?? null, auditRecorded: Boolean(audited) });
     } catch (error) {
       console.error('restore failed', error?.code ?? 'unknown');

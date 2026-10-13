@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -70,6 +70,13 @@ export async function runAttackChecks(config) {
         observed: '미실행: 두 번째 시험 계정 토큰이 없어 보내지 않음 (자료 API 단위 시험은 npm run test:notes)' });
       extra.push({ attackId: 'student_notice_edit', expected: '일반 학생 계정이 강사 공지를 수정하면 거부(403)',
         observed: '미실행: 시험 계정 토큰이 없어 보내지 않음 (자료 API 단위 시험은 npm run test:notes)' });
+    }
+    if (config.step >= 9) {
+      // 9단계: 가상 도플갱어 사건과 실제 회수·경과 시간은 심판이 확인합니다. 학생 쪽 점검은 사건을 보내지 않습니다.
+      extra.push({ attackId: 'burst_read_detection', expected: '같은 사용자의 GET이 10분 안에 120건을 넘으면 propose_revocation(burst_read)',
+        observed: '미실행: 가상 도플갱어 사건은 심판이 보내며 학생 쪽 점검에서는 보내지 않음 (가상 연습은 npm run detect:test)' });
+      extra.push({ attackId: 'revocation_enforced', expected: '회수 제안 뒤 같은 신원의 다음 요청이 거부됨',
+        observed: '미실행: 실제 회수와 경과 시간은 운영 엔진·심판이 확인하며 이 저장소에는 회수 API가 없음' });
     }
     return [
       { attackId: 'no_token_list', expected: '로그인 없이 메모 목록을 요청하면 401 또는 403과 JSON 오류',

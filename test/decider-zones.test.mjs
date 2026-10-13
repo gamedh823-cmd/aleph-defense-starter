@@ -10,9 +10,9 @@ const ID = '11111111-1111-4111-8111-111111111111';
 
 test('심판이 읽는 allowedRoutes와 판정기의 구역 표가 똑같다', () => {
   const config = JSON.parse(readFileSync(new URL('../aleph.config.json', import.meta.url), 'utf8'));
-  // 읽기 구역은 판정기 표와 똑같고, 쓰기 경로는 10단계 복구 경로 한 건(zone restore)뿐이다.
+  // 선언 전체가 판정기 표와 똑같고, 읽기 구역 밖의 쓰기 경로는 10단계 복구 경로 한 건뿐이다.
+  assert.deepEqual(config.allowedRoutes, ZONE_ROUTES.map(route => ({ ...route })));
   const reads = config.allowedRoutes.filter(route => route.method === 'GET');
-  assert.deepEqual(reads, ZONE_ROUTES.map(route => ({ ...route })));
   assert.ok(reads.every(route => route.method === 'GET' && route.zone), '읽기 구역 밖의 쓰기 경로는 선언하지 않는다');
   const writes = config.allowedRoutes.filter(route => route.method !== 'GET');
   assert.deepEqual(writes, [{ ...config.restoreRoute }]);
@@ -25,8 +25,9 @@ test('구역이 붙은 읽기 경로의 정상 요청은 허용된다', async ()
     ['notes', 'GET /my/notes', '/my/notes'], ['notes', 'GET /api/my/notes', '/api/my/notes'],
     ['notes', 'GET /notes/:id', `/notes/${ID}`], ['notes', 'GET /api/notes/:id', `/api/notes/${ID}`],
     ['notes', 'GET /notes/:id', '/notes/demo'], ['notices', 'GET /notices', '/notices'], ['notices', 'GET /api/notices', '/api/notices'],
+    ['notes', 'POST /restore/:id', `/restore/${ID}`], ['notes', 'POST /api/restore/:id', `/api/restore/${ID}`],
   ]) {
-    const result = await ask({ method: 'GET', service, route, path });
+    const result = await ask({ method: route.split(' ')[0], service, route, path });
     assert.equal(result.decision, 'allow', route);
   }
 });
@@ -46,6 +47,14 @@ test('전체 목록·쓰기·알 수 없는 경로·기능 경로·쿼리는 거
     { route: 'GET /notes/:id', path: '/notes/demo', queryLength: 12 },
     { route: 'GET /my/notes', path: '/my/notes', queryLength: 8 },
     { route: 'GET /notes/:id', method: 'PUT', path: '/notes/demo' },
+    // 복구 경로는 한 건만: 다른 서비스·메서드·깊이·기능 이름·쿼리는 거부
+    { service: 'notices', method: 'POST', route: 'POST /restore/:id', path: `/restore/${ID}` },
+    { service: 'notes', method: 'GET', route: 'GET /restore/:id', path: `/restore/${ID}` },
+    { service: 'notes', method: 'DELETE', route: 'DELETE /restore/:id', path: `/restore/${ID}` },
+    { service: 'notes', method: 'POST', route: 'POST /restore/:id', path: '/restore/all' },
+    { service: 'notes', method: 'POST', route: 'POST /restore/:id', path: `/restore/${ID}/extra` },
+    { service: 'notes', method: 'POST', route: 'POST /restore/:id', path: `/restore/${ID}`, queryLength: 5 },
+    { service: 'notes', method: 'POST', route: 'POST /restore', path: '/restore' },
     // 서비스와 경로가 어긋난 구역 넘기
     { service: 'notices', route: 'GET /notes/:id', path: `/notes/${ID}` },
     { service: 'notes', route: 'GET /notices', path: '/notices' },

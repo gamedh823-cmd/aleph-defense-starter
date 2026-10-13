@@ -13,7 +13,26 @@ function makeDb(client) {
   return {
     async list(ownerId) {
       const { data, error } = await client.from(TABLE).select(COLUMNS)
-        .eq('owner_id', ownerId).order('created_at');
+        .eq('owner_id', ownerId).eq('zone', 'memo').order('created_at');
+      if (error) throw error;
+      return data;
+    },
+    // 8단계: 구역·소유자는 DB에 저장된 값만 씁니다. 판단은 src/zones.mjs가 합니다.
+    async getRow(id) {
+      const { data, error } = await client.from(TABLE).select('id, title, body, owner_id, zone')
+        .eq('id', id).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    async isInstructor(userId) {
+      const { data, error } = await client.from('defense_instructors').select('user_id')
+        .eq('user_id', userId).maybeSingle();
+      if (error) return false; // 확인하지 못하면 강사로 보지 않습니다.
+      return Boolean(data);
+    },
+    async updateNotice(id, fields) {
+      const { data, error } = await client.from(TABLE).update(fields)
+        .eq('id', id).eq('zone', 'notice').select(COLUMNS).maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -31,13 +50,13 @@ function makeDb(client) {
     },
     async update(id, ownerId, fields) {
       const { data, error } = await client.from(TABLE).update(fields)
-        .eq('id', id).eq('owner_id', ownerId).select(COLUMNS).maybeSingle();
+        .eq('id', id).eq('owner_id', ownerId).eq('zone', 'memo').select(COLUMNS).maybeSingle();
       if (error) throw error;
       return data;
     },
     async remove(id, ownerId) {
       const { data, error } = await client.from(TABLE).delete()
-        .eq('id', id).eq('owner_id', ownerId).select('id');
+        .eq('id', id).eq('owner_id', ownerId).eq('zone', 'memo').select('id');
       if (error) throw error;
       return data.length > 0;
     },

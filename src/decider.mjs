@@ -2,7 +2,28 @@
 // 6단계: 등록된 기기(request.deviceRegistered === true)만 허용합니다.
 // 7단계: 엔진이 넘긴 접속 신호가 여럿 겹치면 추가 확인(step_up)을 요구합니다.
 // 요청 본문의 userId, role, 기기 키, 토큰을 별도로 믿거나 저장하지 마세요.
-export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required']);
+// 8단계: 엔진이 확인한 method·route·path만 보고 정확히 허용한 자료 경로 밖은 거부합니다.
+export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required', 'zone_routes']);
+
+// 자원 경로 목록. 구역(메모·공지)과 소유자·강사 권한은 자료 API가 DB 값으로 다시 확인합니다.
+const ALLOWED_ROUTES = Object.freeze(['GET /notes', 'POST /notes', 'GET /notes/:id', 'PUT /notes/:id', 'DELETE /notes/:id']);
+const ITEM_ID = /^[A-Za-z0-9_-]{1,64}$/u;
+// :id 자리에 기능 이름이 들어오면 자료 ID가 아니라 기능 경로이므로 거부합니다.
+const FEATURE_WORDS = Object.freeze(['export', 'import', 'all', 'bulk', 'admin', 'search', 'batch', 'backup', 'dump', 'list']);
+
+function zoneRouteAllowed(request) {
+  if (typeof request?.route !== 'string' || typeof request?.method !== 'string'
+      || typeof request?.path !== 'string') return false;
+  // 엔진 경로는 '/notes', 설정의 허용 경로는 '/api/notes' 모양이라 앞의 /api만 맞춰 비교합니다.
+  const route = request.route.replace(/^([A-Z]+) \/api\//u, '$1 /');
+  const path = request.path.replace(/^\/api(?=\/)/u, '');
+  if (!ALLOWED_ROUTES.includes(route) || !route.startsWith(`${request.method} `)) return false;
+  // 쿼리로 기능을 고르지 못하게 쿼리가 있는 요청은 허용하지 않습니다.
+  if (request.queryLength !== 0) return false;
+  if (!route.endsWith('/:id')) return path === '/notes';
+  const match = /^\/notes\/([^/]+)$/u.exec(path);
+  return Boolean(match && ITEM_ID.test(match[1]) && !FEATURE_WORDS.includes(match[1].toLowerCase()));
+}
 
 // 엔진이 검증해 넘긴 신호 출처만 믿습니다. 실제 경로의 'none'이나 알 수 없는 출처는 근거로 쓰지 않습니다.
 const TRUSTED_SIGNAL_SOURCES = Object.freeze(['judge_fixture']);
@@ -49,6 +70,9 @@ export async function decide(request) {
   });
   if (request?.deviceRegistered !== true) {
     return response('deny', 'device_not_registered', 'device_registered');
+  }
+  if (!zoneRouteAllowed(request)) {
+    return response('deny', 'route_not_allowed', 'zone_routes');
   }
   const verified = request.stepUp?.verified === true;
   if (!verified && unusualSignalCount(request) >= STEP_UP_SIGNALS) {

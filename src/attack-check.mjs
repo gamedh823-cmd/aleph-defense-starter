@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -63,6 +63,13 @@ export async function runAttackChecks(config) {
         observed: '미실행: 이상 접속 사건은 심판이 보내며 학생 쪽 점검에서는 보내지 않음 (가상 연습은 npm run decider:test)' });
       extra.push({ attackId: 'relogin_block_before_verify', expected: '추가 확인 전에는 자료가 막히고 새 로그인 뒤 요청이 허용됨',
         observed: '미실행: 제공 엔진에 재로그인 시각 확인 계약이 없어 실제 자료 차단은 시험하지 않음' });
+    }
+    if (config.step >= 8) {
+      // 8단계: 다른 구역 시험은 서로 다른 두 시험 계정의 토큰이 필요해 학생 쪽 점검에서는 보내지 않습니다.
+      extra.push({ attackId: 'cross_zone_memo_access', expected: '다른 사용자의 메모를 API로 조회·수정하면 거부(404)',
+        observed: '미실행: 두 번째 시험 계정 토큰이 없어 보내지 않음 (자료 API 단위 시험은 npm run test:notes)' });
+      extra.push({ attackId: 'student_notice_edit', expected: '일반 학생 계정이 강사 공지를 수정하면 거부(403)',
+        observed: '미실행: 시험 계정 토큰이 없어 보내지 않음 (자료 API 단위 시험은 npm run test:notes)' });
     }
     return [
       { attackId: 'no_token_list', expected: '로그인 없이 메모 목록을 요청하면 401 또는 403과 JSON 오류',

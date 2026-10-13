@@ -2,6 +2,7 @@
 // 4단계: 모든 읽기·수정·삭제는 서버가 확인한 사용자 ID와 DB의 owner_id가 같을 때만 허용합니다.
 // 남의 메모는 '없는 메모'와 똑같이 404로 답해 존재 여부도 알려 주지 않습니다.
 import { randomUUID } from 'node:crypto';
+import { authorizeNote, resourceId } from './zones.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -78,19 +79,29 @@ export function createNotesApi({ verify, db }) {
     return guarded(request, response, async (who) => {
       const id = String(request.query?.id ?? '');
       if (!UUID.test(id)) return send(response, 404, { error: 'NOT_FOUND' });
-      if (method === 'GET') {
-        const found = await db.get(id, who.userId);
-        return found ? send(response, 200, found) : send(response, 404, { error: 'NOT_FOUND' });
+      // 8단계: DB에 저장된 구역·소유자·강사 권한과 매 요청마다 대조합니다. 거부 사유는 코드로만 남깁니다.
+      const row = await db.getRow(id);
+      const action = method === 'GET' ? 'read' : method === 'PUT' ? 'update' : 'delete';
+      const instructor = row?.zone === 'notice' && action === 'update'
+        ? await db.isInstructor(who.userId) : false;
+      const verdict = authorizeNote({ row, userId: who.userId, instructor, action });
+      if (!verdict.allow) {
+        console.warn('zone denied', resourceId(row?.zone ?? 'unknown', id), action, verdict.reason);
+        return verdict.status === 403
+          ? send(response, 403, { error: 'FORBIDDEN_ZONE', message: '이 자료는 고칠 수 없는 구역입니다.' })
+          : send(response, 404, { error: 'NOT_FOUND' });
       }
+      if (method === 'GET') return send(response, 200, { id: row.id, title: row.title, body: row.body });
       if (method === 'PUT') {
-        // 소유자를 바꾸려는 요청은 거부합니다. 본문의 owner_id는 어떤 경우에도 저장하지 않습니다.
+        // 소유자를 바꾸려는 요청은 거부합니다. 본문의 owner_id·zone·role은 어떤 경우에도 저장하지 않습니다.
         const claimed = request.body?.owner_id ?? request.body?.ownerId;
-        if (claimed !== undefined && claimed !== who.userId) {
+        if (claimed !== undefined && claimed !== row.owner_id) {
           return send(response, 403, { error: 'OWNER_CHANGE_FORBIDDEN', message: '소유자는 바꿀 수 없습니다.' });
         }
         const fields = parseFields(request.body, { partial: true });
         if (!fields) return send(response, 400, { error: 'INVALID_INPUT' });
-        const updated = await db.update(id, who.userId, fields);
+        const updated = row.zone === 'notice'
+          ? await db.updateNotice(id, fields) : await db.update(id, who.userId, fields);
         return updated ? send(response, 200, updated) : send(response, 404, { error: 'NOT_FOUND' });
       }
       const removed = await db.remove(id, who.userId);

@@ -44,7 +44,21 @@
 
 한계: 연습 경보의 규칙 수준·반복 횟수·설명 표기를 기준으로 하며 실제 웹 로그나 Wazuh 운영 환경에서 검증하지 않았습니다. 거부 규칙의 만료 시각은 근거 경보 시각에서 60분 뒤입니다.
 
-## 7단계: 평소와 다른 접속은 다시 확인합니다 (현재 단계)
+## 8단계: 자료마다 갈 수 있는 구역을 나눕니다 (현재 단계)
+
+작동하는 기능
+- 자원 구역: `defense_memos.zone`이 `memo`(소유자만) 또는 `notice`(강사 공지: 로그인한 사용자는 읽기, 저장된 강사만 수정, 삭제는 아무도 못 함)입니다. 서버는 `memo:<id>`·`notice:<id>` 모양의 자원 ID로 구별합니다(`src/zones.mjs`). 기존 메모는 모두 `memo`이고 주소·화면은 그대로입니다.
+- 자료 API(`src/notes-api.mjs`): 요청마다 DB의 구역·`owner_id`와 `defense_instructors`에 저장된 강사 권한을 다시 대조합니다. 화면 메뉴나 요청 본문의 `role`·`zone`·`owner_id`는 믿지 않습니다. 남의 메모는 404, 일반 학생의 공지 수정·삭제는 403(`FORBIDDEN_ZONE`)이며 거부 사유 코드는 서버 로그에만 짧게 남깁니다. 메모 목록은 본인의 `memo` 구역만 돌려줍니다.
+- 판정기(`src/decider.mjs`): 규칙 `zone_routes` 추가. 엔진이 확인한 method·route·path가 정해진 자료 경로(`/notes`, `/notes/:id`)와 정확히 맞고 쿼리가 없으며 `:id` 자리가 기능 이름이 아닐 때만 통과하고, 나머지는 `deny`·`route_not_allowed`입니다. 6·7단계 규칙(기기 등록, 추가 확인)은 그대로입니다.
+- `db/zones.sql`: `zone` 열, 강사 테이블(`anon`·`authenticated` 직접 권한 회수, `service_role`만). 시험용 공지·강사 등록은 커밋하지 않는 `db/zones.local.sql`에 둡니다.
+
+다시 실행하는 방법
+1. 배포(push)보다 먼저 SQL Editor에서 `db/zones.sql`을 실행하고 마지막 권한 표 네 값이 모두 false인지 확인합니다.
+2. 자동 시험: `npm run test:notes`, `node --test test/decider-zones.test.mjs`, `npm run decider:test`.
+
+한계: 판정기는 요청에 소유자·구역 정보가 없어 경로 모양만 걸러내며, 소유자·강사 판단은 자료 API가 맡습니다. 두 번째 시험 계정이 필요한 다른 구역 요청은 이 저장소에서 실제 배포로 보내지 않았습니다(미실행). 시험은 가상 요청·메모리 DB 연습이며 심판 판정이 아닙니다.
+
+## 7단계: 평소와 다른 접속은 다시 확인합니다 (지난 단계)
 
 작동하는 기능
 - `src/decider.mjs`에 규칙 `step_up_required` 추가(6단계 `device_registered`는 그대로). 엔진이 넘긴 신호만 씁니다. 신호 출처(`signals.source`)가 `judge_fixture`처럼 신뢰 목록에 있고 모양이 맞을 때만 읽으며, 없거나 `none`·알 수 없는 출처면 근거로 쓰지 않고 정상값으로 채우지도 않습니다.

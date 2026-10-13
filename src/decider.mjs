@@ -6,8 +6,7 @@
 export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required', 'zone_routes', 'zone_owner']);
 
 // 자원 경로 목록. 구역(메모·공지)과 소유자·강사 권한은 자료 API가 DB 값으로 다시 확인합니다.
-// 진단용(임시): GET /notes/:id를 막아 심판의 "다른 구역 조회"가 판정기 때문인지 API 때문인지 가립니다.
-const ALLOWED_ROUTES = Object.freeze(['GET /notes', 'POST /notes', 'PUT /notes/:id', 'DELETE /notes/:id']);
+const ALLOWED_ROUTES = Object.freeze(['GET /notes', 'POST /notes', 'GET /notes/:id', 'PUT /notes/:id', 'DELETE /notes/:id']);
 const ITEM_ID = /^[A-Za-z0-9_-]{1,64}$/u;
 // :id 자리에 기능 이름이 들어오면 자료 ID가 아니라 기능 경로이므로 거부합니다.
 const FEATURE_WORDS = Object.freeze(['export', 'import', 'all', 'bulk', 'admin', 'search', 'batch', 'backup', 'dump', 'list']);

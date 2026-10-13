@@ -45,7 +45,17 @@ async function runSimulation() {
   };
 }
 
+// 제출 묶음은 읽기 요청만 보낼 수 있고, 실행하지 않은 점검은 observed를 not_run으로 둡니다(사유는 expected에 덧붙입니다).
 export async function runAttackChecks(config) {
+  const attempts = await collectAttackChecks(config);
+  return attempts.map((item) => {
+    if (!item.observed.startsWith('미실행')) return item;
+    const reason = item.observed.replace(/^미실행:?\s*/u, '');
+    return { ...item, expected: `${item.expected} (미실행 사유: ${reason})`.slice(0, 300), observed: 'not_run' };
+  });
+}
+
+async function collectAttackChecks(config) {
   if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
@@ -124,14 +134,15 @@ export async function runAttackChecks(config) {
         observed: '미실행: 실제 회수와 경과 시간은 운영 엔진·심판이 확인하며 이 저장소에는 회수 API가 없음' });
     }
     if (config.step >= 10) {
-      // 10단계: 복구 경로는 로그인한 소유자만 부를 수 있습니다. 비로그인 요청이 거부되는지만 실제로 보냅니다.
+      // 10단계: 제출 묶음은 읽기(GET·HEAD) 요청만 보낼 수 있습니다. 복구 경로(POST 전용)를 읽기로 부르면 405로 거부되는지만 확인하고,
+      // 로그인 없는 POST 복구 요청의 거부(401)는 쓰기 요청이라 이 점검에서 보내지 않습니다(npm run matrix가 보냅니다).
       const restore = await fetch(new URL('/api/restore/11111111-1111-4111-8111-111111111111', app), {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
+        method: 'GET', redirect: 'error', signal: AbortSignal.timeout(10000),
       });
       let restoreJson = false;
       try { restoreJson = typeof (await restore.json())?.error === 'string'; } catch { /* 비JSON은 실패 */ }
-      extra.push({ attackId: 'restore_requires_login', expected: '로그인 없이 복구 경로를 호출하면 401과 JSON 오류',
-        observed: [401, 403].includes(restore.status) && restoreJson
+      extra.push({ attackId: 'restore_get_refused', expected: '복구 경로를 읽기(GET)로 부르면 405와 JSON 오류(복구는 POST와 로그인만 받음)',
+        observed: restore.status === 405 && restoreJson
           ? `거부됨 (HTTP ${restore.status}, JSON 오류)` : `거부되지 않음 (HTTP ${restore.status})` });
       const sim = await simulateRestore();
       const ok = (value) => (value ? '통과' : '실패');

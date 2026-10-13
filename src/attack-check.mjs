@@ -1,5 +1,44 @@
+import { contentHash, createRestoreApi } from './restore.mjs';
+
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
+// 10단계: 복구 로직을 메모리 DB에서 직접 실행합니다. 배포로 보낸 요청이 아니며, 실제로 돌려 본 결과만 돌려줍니다.
+export async function simulateRestore() {
+  const B = '22222222-2222-4222-8222-222222222222';
+  const [M1, M2] = ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'];
+  const memo = (id, title, body) => ({ id, owner_id: B, title, body, zone: 'memo' });
+  const rows = new Map([[M1, memo(M1, '원본', '가상 원본')], [M2, memo(M2, '다른 메모', '가상 다른 메모')]]);
+  const backups = new Map([...rows.values()].map(r => [r.id, { memo_id: r.id, owner_id: B, title: r.title, body: r.body,
+    content_sha256: contentHash(r) }]));
+  const audit = [{ action: 'earlier' }];
+  const restore = createRestoreApi({
+    verify: async () => ({ userId: B }),
+    db: { getBackup: async id => backups.get(id) ?? null, getRow: async id => (rows.has(id) ? { ...rows.get(id) } : null),
+      restoreMemo: async row => { rows.set(row.id, { ...row, zone: 'memo' }); },
+      audit: async entry => { audit.push(entry); return { id: audit.length }; } },
+  });
+  const call = (request) => new Promise((resolve) => {
+    restore({ method: 'POST', headers: { authorization: 'Bearer local' }, query: {}, ...request },
+      { setHeader() {}, status(code) { this.code = code; return this; }, json(body) { resolve({ status: this.code, body }); } });
+  });
+  const other = { ...rows.get(M2) };
+  rows.get(M1).title = '변조'; rows.get(M1).body = '변조된 내용';
+  const refused = await call({ query: { id: M1 }, body: { contentSha256: 'f'.repeat(64) } });
+  const stayed = rows.get(M1).title === '변조';
+  const done = await call({ query: { id: M1 } });
+  rows.delete(M1);
+  const again = await call({ query: { id: M1 } });
+  return {
+    refusedMismatch: refused.status === 409 && stayed,
+    restoredTampered: done.status === 200 && done.body.restored === true,
+    restoredDeleted: again.status === 200 && again.body.restored === true,
+    sameAsBackup: contentHash(rows.get(M1)) === backups.get(M1).content_sha256,
+    othersKept: JSON.stringify(rows.get(M2)) === JSON.stringify(other) && rows.size === 2,
+    auditKept: audit[0].action === 'earlier' && audit.filter(entry => entry.action === 'restore').length === 2
+      && audit.some(entry => entry.action === 'restore_refused'),
+  };
+}
+
 export async function runAttackChecks(config) {
   if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
@@ -88,6 +127,10 @@ export async function runAttackChecks(config) {
       extra.push({ attackId: 'restore_requires_login', expected: '로그인 없이 복구 경로를 호출하면 401과 JSON 오류',
         observed: [401, 403].includes(restore.status) && restoreJson
           ? `거부됨 (HTTP ${restore.status}, JSON 오류)` : `거부되지 않음 (HTTP ${restore.status})` });
+      const sim = await simulateRestore();
+      const ok = (value) => (value ? '통과' : '실패');
+      extra.push({ attackId: 'restore_local_simulation', expected: '변조·삭제된 가상 메모 한 건이 사본의 ID·소유자·해시와 같게 복원되고, 다른 메모와 감사 기록은 그대로이며, 사본 해시가 다르면 복원하지 않음',
+        observed: `로컬 모의 실행(메모리 DB, 배포 요청 아님): 해시 불일치 거부 ${ok(sim.refusedMismatch)}, 변조 복원 ${ok(sim.restoredTampered)}, 삭제 복원 ${ok(sim.restoredDeleted)}, 사본과 일치 ${ok(sim.sameAsBackup)}, 다른 메모 보존 ${ok(sim.othersKept)}, 감사 기록 보존 ${ok(sim.auditKept)}` });
       extra.push({ attackId: 'restore_one_memo_verified', expected: '시험 계정 B의 변조·삭제된 메모 한 건이 사본의 ID·소유자·해시와 같게 복원됨',
         observed: '미실행: 시험 계정 B의 토큰이 없어 보내지 않음 (복원 로직 단위 시험은 node --test test/restore-api.test.mjs)' });
       extra.push({ attackId: 'replay_steps_1_to_9', expected: '복구 직후 1~9단계의 대표 공격 요청이 다시 거부됨',

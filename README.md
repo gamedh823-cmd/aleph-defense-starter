@@ -44,7 +44,32 @@
 
 한계: 연습 경보의 규칙 수준·반복 횟수·설명 표기를 기준으로 하며 실제 웹 로그나 Wazuh 운영 환경에서 검증하지 않았습니다. 거부 규칙의 만료 시각은 근거 경보 시각에서 60분 뒤입니다.
 
-## 11단계: 나만의 접속 앱을 완성합니다 (현재 단계)
+## 12단계: 탈환 작전실을 완성합니다 (현재 단계)
+
+이 절은 커밋 기준으로 적었습니다(검사한 커밋은 제출 묶음의 `commit`). 1~11단계 기능은 그대로입니다.
+
+학생이 만든 것과 제공된 것
+- **학생 몫**: 학생 판정기(`src/decider.mjs`), 탐지 규칙(`src/detect.mjs`), 자료 API·복구·기기 승인 API(`api/`, `src/*.mjs`), 접속 앱 화면(`public/index.html`, `manifest.webmanifest`), 탈환 작전실(`public/war-room.html`, `/api/warroom/summary`), DB 정의(`db/*.sql`).
+- **제공된 것(출처 표시)**: 요청·응답 계약과 사건 형식(`docs/DECIDER_REQUEST.md`, `docs/DETECT_EVENTS.md`)을 정하는 **ALEPH SDP 엔진**(반 엔진·심판)은 제공된 것이며 학생이 만든 것이 아닙니다. 시작 틀(`ChoiTimo/aleph-defense-starter`)의 `verify-login.mjs`, 빌드·번들 스크립트도 제공된 것입니다. 이 저장소에는 엔진 코드나 비밀값이 없습니다.
+
+작전실(`/war-room.html`)
+- 로그인한 본인의 서버 기록을 집계한 숫자만 보여 줍니다: 판정 규칙·허용 경로(코드), 탐지 규칙(코드), 회수 상태, 복구 버전(내 메모 수·사본 수·기록된 복구와 거부·마지막 복구)과 기기 승인 상태(서버 기록). 확인하지 못한 항목(실제 탐지 사건, 실제 회수)은 **미실행**으로 표시하고, 메모 제목·본문·토큰은 표시하지 않습니다. 화면의 문구는 통과 근거가 아닙니다.
+- 화면 숫자와 서버 기록 대조: 화면의 "내 메모 수·사본 수"는 SQL Editor에서 `select count(*) from defense_memos where zone='memo' and owner_id='<내 사용자 ID>'`와 `select count(*) from defense_memo_backups where owner_id='<내 사용자 ID>'`, 기록된 복구는 `select action, count(*) from defense_audit where owner_id='<내 사용자 ID>' group by action`의 결과와 같아야 합니다. 직접 대조하기 전에는 맞는다고 적지 않습니다.
+
+1~11단계 재시험 표: `npm run matrix`
+- 배포 주소로 실제 요청(토큰 없는 요청, 가짜 토큰, manifest, `/aleph.json`)을 보내 응답 코드·요청 ID(`x-vercel-id`)·확인 시각을 기록하고(**live**), 판정기·탐지를 가상 요청으로 로컬에서 실행하고(**local**, 배포 요청 아님), 시험 계정 토큰·서명 키·운영 엔진이 필요한 시험은 **미실행**으로 남기는 한 표입니다. 결과는 화면과 `artifacts/replay-matrix.md`·`.json`(커밋하지 않음)에 남습니다.
+- 이 표는 41종 시험 전체가 아니며 심판 판정이 아닙니다. 아직 실행하지 않은 41종을 통과로 처리하지 않았습니다.
+
+설치·실행·중지·복구
+1. **설치**: 저장소를 받아 `npm install`을 실행하고 Vercel 새 프로젝트에 연결합니다. 환경변수 `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_PUBLISHABLE_KEY`의 값은 Vercel 비밀 입력란에만 넣습니다(저장소에 없음). 서버 함수는 Vercel 무료 요금제 상한(12개)에 맞춰 12개입니다.
+2. **DB 준비**: SQL Editor에서 `db/`의 SQL을 순서대로 실행합니다: `memos.sql` → `memos-rls.sql` → `direct-access-revoke.sql` → `zones.sql` → `backup-restore.sql` → `device-approval.sql`. 시험용 메모·강사·승인은 커밋하지 않는 `db/*.local.sql`에 둡니다.
+3. **실행**: push하면 Vercel이 배포합니다. `/aleph.json`의 `commit`이 push한 커밋인지 확인한 뒤 화면(`/`)에서 로그인합니다. 기기는 서버 운영자가 승인한 뒤에만 자료가 열립니다. 시험은 `node --test <파일>`로 실행합니다.
+4. **중지**: 서버에서 자료 요청을 멈추려면 Vercel 프로젝트에서 배포를 중지(또는 이전 배포로 되돌림)하거나, 기기 승인 요청을 DB에서 `revoked`로 바꿉니다. 로그인 정보는 화면 메모리에만 있어 로그아웃·새로고침이 곧 세션 종료입니다.
+5. **복구**: 메모 한 건은 `POST /api/restore/:id`(로그인한 소유자만, 사본의 ID·소유자·해시 대조), 정책은 `npm run policy:diff`로 차이를 보고 `npm run policy:restore -- --yes`로 되돌립니다. 자료 사본은 메모가 만들어질 때 DB 트리거가 남깁니다.
+
+한계: 서명한 요청을 검증하는 코드, 기기 키, 실제 회수 집행, 41종 전체 재시험은 이 저장소에 없으며 **미실행**입니다. 작전실은 서버 기록의 요약일 뿐 방어가 성공했다는 증거가 아닙니다.
+
+## 11단계: 나만의 접속 앱을 완성합니다 (지난 단계)
 
 작동하는 기능
 - **설치형 웹앱 설정**: `public/manifest.webmanifest`(앱 이름 "BYTE BACK 자료실", `start_url` `/`, `display` `standalone`, 색상, 아이콘 `public/icon.svg`)을 `index.html`에 연결했습니다. 따로 설치하는 접속 프로그램은 만들지 않았습니다. **앱을 설치했다는 표시만으로 기기가 확인되지는 않으며**, 화면과 manifest 설명에도 그렇게 적었습니다.
@@ -71,7 +96,7 @@
 
 작동하는 기능
 - **메모 사본**: `db/backup-restore.sql`의 트리거가 메모가 만들어질 때 사본(`defense_memo_backups`: ID·소유자·제목·본문·내용 해시)을 한 번만 남깁니다. 해시는 `sha256(메모ID|소유자ID|제목|본문)`이고, 수정·삭제는 사본에 영향을 주지 않습니다. 사본은 서버(`service_role`)가 읽기만 할 수 있고, 감사 기록(`defense_audit`)은 추가·조회만 됩니다. `anon`·`authenticated`는 두 테이블 모두 직접 권한이 없습니다. 한계: 사본은 **만들어진 시점의 내용**이라, 정상 수정한 내용은 복원하면 처음 내용으로 돌아갑니다.
-- **복구 경로**: 서비스 `notes`, `POST /api/restore/:id`(`src/restore.mjs`, `api/restore/[id].js`). 로그인한 소유자만 부를 수 있고, 지정한 메모 **한 건만** 복원합니다. 사본의 ID·소유자·내용 해시를 다시 계산해 대조하고, 사본이 없거나 남의 메모면 404, 해시가 틀리면 409, 현재 메모의 소유자가 사본과 다르면 덮어쓰지 않고 409입니다. 이미 같은 내용이면 바꾸지 않습니다. 다른 메모와 감사 기록은 건드리지 않고, 복구 사실만 감사 기록에 추가합니다(메모 내용은 기록·응답에 없음). 경로가 `:id` 그대로 오면 본문의 `id`를 쓰고, `POST /api/restore`(본문 `id`)도 같은 처리부입니다. 요청이 소유자·해시·내용(`owner_id`, `contentSha256`, `title`/`body`)을 같이 보내면 사본과 대조해, 하나라도 다르면 복원하지 않고 409와 거부 기록(`restore_refused`, 내용 없음)만 남깁니다. `dryRun: true`이면 바뀔 항목(`plan`)만 보여 주고 아무것도 바꾸지 않습니다. 응답에는 검증 결과(`verified`), 감사 기록 번호(`auditId`)가 있고 메모 내용은 없습니다. 이 경로는 `aleph.config.json`의 `restoreRoute`와 `allowedRoutes`(zone `my-notes`, 심판이 선언된 경로만 호출하므로 둘 다에 선언)에 있고 빌드가 `/aleph.json`에도 공개합니다.
+- **복구 경로**: 서비스 `notes`, `POST /api/restore/:id`(`src/restore.mjs`, `api/restore/[id].js`). 로그인한 소유자만 부를 수 있고, 지정한 메모 **한 건만** 복원합니다. 사본의 ID·소유자·내용 해시를 다시 계산해 대조하고, 사본이 없거나 남의 메모면 404, 해시가 틀리면 409, 현재 메모의 소유자가 사본과 다르면 덮어쓰지 않고 409입니다. 이미 같은 내용이면 바꾸지 않습니다. 다른 메모와 감사 기록은 건드리지 않고, 복구 사실만 감사 기록에 추가합니다(메모 내용은 기록·응답에 없음). 경로가 `:id` 그대로 오면 본문의 `id`를 씁니다(12단계에서 서버 함수 자리를 만들려고 `POST /api/restore` 본문 ID용 중복 함수는 제거했습니다). 요청이 소유자·해시·내용(`owner_id`, `contentSha256`, `title`/`body`)을 같이 보내면 사본과 대조해, 하나라도 다르면 복원하지 않고 409와 거부 기록(`restore_refused`, 내용 없음)만 남깁니다. `dryRun: true`이면 바뀔 항목(`plan`)만 보여 주고 아무것도 바꾸지 않습니다. 응답에는 검증 결과(`verified`), 감사 기록 번호(`auditId`)가 있고 메모 내용은 없습니다. 이 경로는 `aleph.config.json`의 `restoreRoute`와 `allowedRoutes`(zone `my-notes`, 심판이 선언된 경로만 호출하므로 둘 다에 선언)에 있고 빌드가 `/aleph.json`에도 공개합니다.
 - **정책 사본**: `policy/safe-policy.v1.json`(9단계까지 검증한 선언 경로와 판정 규칙 이름, 해시 포함). `npm run policy:diff`가 사본과 현재 정책의 차이를 보여 주고, `npm run policy:restore`는 같은 차이를 보여 준 뒤 `--yes`를 붙일 때만 `aleph.config.json`의 `allowedRoutes`만 되돌립니다. 사본이 없거나 해시 검증에 실패하면 중단합니다. 판정 규칙(코드)은 git으로 되돌리며 이 도구가 고치지 않습니다.
 
 다시 실행하는 방법

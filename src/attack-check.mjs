@@ -40,7 +40,7 @@ export async function simulateRestore() {
 }
 
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -154,6 +154,16 @@ export async function runAttackChecks(config) {
         observed: '미실행: 서명 검증은 운영 엔진과 심판이 하며 이 저장소에는 서명 키·검증 코드가 없음' });
       extra.push({ attackId: 'signed_request_tampered', expected: '서명한 뒤 경로나 본문을 바꾼 요청은 거부',
         observed: '미실행: 서명한 요청의 변조 시험은 심판이 보내며 학생 쪽 점검에서는 보내지 않음' });
+    }
+    if (config.step >= 12) {
+      // 12단계: 작전실 요약 API가 로그인 없이는 거부되는지만 실제로 보냅니다. 전체 재시험 표는 npm run matrix가 만듭니다.
+      const room = await fetch(new URL('/api/warroom/summary', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+      let roomJson = false;
+      try { roomJson = typeof (await room.json())?.error === 'string'; } catch { /* 비JSON은 실패 */ }
+      extra.push({ attackId: 'warroom_requires_login', expected: '로그인 없이 작전실 요약을 요청하면 401과 JSON 오류',
+        observed: [401, 403].includes(room.status) && roomJson ? `거부됨 (HTTP ${room.status}, JSON 오류)` : `거부되지 않음 (HTTP ${room.status})` });
+      extra.push({ attackId: 'full_replay_41', expected: '41종 공격 전체가 거부되고 정상 요청은 허용됨',
+        observed: '미실행: 41종 전체 재시험은 심판이 보내며 이 저장소의 npm run matrix는 그 일부(토큰 없는 요청과 로컬 판정·탐지)만 실행함' });
     }
     return [
       { attackId: 'no_token_list', expected: '로그인 없이 메모 목록을 요청하면 401 또는 403과 JSON 오류',

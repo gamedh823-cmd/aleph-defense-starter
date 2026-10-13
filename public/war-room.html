@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BYTE BACK | 탈환 작전실</title>
+  <meta name="theme-color" content="#101a28">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #101a28; color: #ecf4ff; }
+    main { max-width: 860px; margin: 0 auto; padding: 36px 22px 64px; }
+    .eyebrow { color: #8ad8df; font-size: 14px; font-weight: 700; letter-spacing: .08em; }
+    h1 { margin: 14px 0; font-size: clamp(28px, 6vw, 42px); }
+    h2 { margin: 0 0 10px; font-size: 18px; }
+    p, li, td, th { font-size: 15px; line-height: 1.6; color: #bfd0e5; }
+    .notice { margin: 18px 0; padding: 14px 16px; border: 1px solid #d07384; border-radius: 12px; color: #ffe3e8; background: #612a3544; }
+    section.card { margin: 16px 0; padding: 16px 18px; border: 1px solid #51667c; border-radius: 14px; background: #1a2a3d; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #2d4057; vertical-align: top; }
+    .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .tag.server { background: #1d4b3a; color: #9be8c5; }
+    .tag.code { background: #2b3f63; color: #b9d0ff; }
+    .tag.none { background: #5c4315; color: #ffd28a; }
+    form { display: grid; gap: 10px; margin: 18px 0; max-width: 380px; }
+    input { padding: 10px 12px; border: 1px solid #51667c; border-radius: 10px; background: #0c1520; color: #ecf4ff; font: inherit; }
+    button { padding: 10px 16px; border: 1px solid #8ad8df; border-radius: 10px; background: #1a2a3d; color: #ecf4ff; font: inherit; font-weight: 700; cursor: pointer; }
+    .status { min-height: 1.5em; color: #ffd28a; }
+    a { color: #8ad8df; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">3차 침공 · 12단계 - 탈환 작전실</div>
+    <h1>탈환 작전실</h1>
+    <div class="notice">이 화면의 숫자는 로그인한 본인의 서버 기록(<span class="tag server">서버 기록</span>)과 코드에서 읽은 값(<span class="tag code">코드</span>)입니다. 확인하지 못한 항목은 <span class="tag none">미실행</span>으로 표시합니다. 화면의 문구는 통과 근거가 아니며, 메모 제목·본문·토큰은 표시하지 않습니다. 로그인 정보는 이 화면의 메모리에만 있어 새로고침하면 다시 로그인해야 합니다.</div>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+
+    <form id="login">
+      <label for="email">이메일</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="password">비밀번호</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button type="submit">로그인하고 작전실 열기</button>
+    </form>
+
+    <div id="room" hidden>
+      <p><a href="/">자료실로 돌아가기</a> · <button id="refresh" type="button">다시 읽기</button> · <button id="logout" type="button">로그아웃</button> · <span id="at"></span></p>
+      <section class="card"><h2>판정기 규칙 <span class="tag code">코드</span></h2><ul id="rules"></ul></section>
+      <section class="card"><h2>탐지 사건</h2><table id="detection"></table></section>
+      <section class="card"><h2>회수 상태</h2><table id="revocation"></table></section>
+      <section class="card"><h2>복구 버전 <span class="tag server">서버 기록</span></h2><table id="restore"></table></section>
+      <section class="card"><h2>기기 승인 <span class="tag server">서버 기록</span></h2><table id="device"></table></section>
+      <section class="card"><h2>화면에 표시하지 않는 것</h2><ul id="hidden"></ul></section>
+    </div>
+  </main>
+  <script type="module">
+    // 이 화면에는 저장소 키가 없습니다. 로그인 정보는 브라우저가 남기는 저장 공간(웹 저장소·쿠키 포함)에 넣지 않고 이 화면의 메모리에만 둡니다.
+    const $ = (id) => document.getElementById(id);
+    const status = (text) => { $('status').textContent = text; };
+    let session = null;
+
+    async function post(path, body) {
+      const response = await fetch(path, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.message ?? payload?.error ?? `요청 실패 (HTTP ${response.status})`);
+      return payload;
+    }
+
+    const cell = (tag, value) => { const el = document.createElement(tag); if (value instanceof Node) el.append(value); else el.textContent = String(value); return el; };
+    const badge = (source) => { const el = document.createElement('span'); el.className = `tag ${source}`; el.textContent = { server: '서버 기록', code: '코드', none: '미실행' }[source]; return el; };
+    const rows = (table, items) => table.replaceChildren(...items.map(([name, value, source]) => {
+      const tr = document.createElement('tr');
+      tr.append(cell('th', name), cell('td', value), cell('td', badge(source)));
+      return tr;
+    }));
+    const unrun = (text) => String(text).startsWith('미실행');
+
+    function render(data) {
+      $('at').textContent = `읽은 시각 ${new Date(data.generatedAt).toLocaleTimeString('ko-KR')}`;
+      $('rules').replaceChildren(...[...data.rules.decider.map((id) => `규칙 ${id}`), ...data.rules.routes.map((route) => `허용 경로 ${route}`)]
+        .map((text) => { const li = document.createElement('li'); li.textContent = text; return li; }));
+      rows($('detection'), [
+        ['규칙', `${data.detection.rule}: 같은 사용자의 GET이 ${data.detection.windowMinutes}분 안에 ${data.detection.limit}건 초과`, 'code'],
+        ['실제 사건', data.detection.liveEvents, unrun(data.detection.liveEvents) ? 'none' : 'server'],
+      ]);
+      rows($('revocation'), [
+        ['회수 제안', data.revocation.proposalsOnly ? 'propose_revocation 제안만 만들고 집행하지 않음' : '확인 불가', 'code'],
+        ['실제 회수', data.revocation.enforced, unrun(data.revocation.enforced) ? 'none' : 'server'],
+      ]);
+      const r = data.restore;
+      rows($('restore'), [
+        ['내 메모 수', r.memos, 'server'], ['메모 사본 수', r.backups, 'server'],
+        ['사본이 메모 수 이상', r.backupCoversMemos ? '예' : '아니오', 'server'],
+        ['기록된 복구', r.restoresRecorded, 'server'], ['기록된 복구 거부', r.refusalsRecorded, 'server'],
+        ['마지막 복구', r.lastRestoreAt ? new Date(r.lastRestoreAt).toLocaleString('ko-KR') : '없음', 'server'],
+      ]);
+      rows($('device'), [
+        ['승인 상태', { approved: '승인됨', pending: '승인 대기', none: '승인 전' }[data.device.state] ?? '확인 불가', 'server'],
+        ['요청 기록', Object.entries(data.device.requests).map(([k, v]) => `${k} ${v}`).join(', ') || '없음', 'server'],
+      ]);
+      $('hidden').replaceChildren(...data.notShown.map((text) => { const li = document.createElement('li'); li.textContent = text; return li; }));
+    }
+
+    async function load() {
+      status('서버 기록을 읽는 중입니다.');
+      try {
+        const response = await fetch('/api/warroom/summary', { cache: 'no-store', headers: { Authorization: `Bearer ${session.access_token}` } });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.message ?? payload?.error ?? `요청 실패 (HTTP ${response.status})`);
+        render(payload);
+        status('');
+      } catch (error) { status(error.message); }
+    }
+
+    $('login').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      status('로그인 중입니다.');
+      try {
+        session = await post('/api/auth/login', { email: $('email').value, password: $('password').value });
+        $('login').hidden = true;
+        $('room').hidden = false;
+        await load();
+      } catch (error) { status(`로그인하지 못했습니다: ${error.message}`); }
+      $('password').value = '';
+    });
+    $('refresh').addEventListener('click', load);
+    $('logout').addEventListener('click', () => { session = null; $('room').hidden = true; $('login').hidden = false; status('로그아웃했습니다.'); });
+  </script>
+</body>
+</html>

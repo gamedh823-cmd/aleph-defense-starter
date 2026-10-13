@@ -5,6 +5,7 @@ import config from '../aleph.config.json' with { type: 'json' };
 import { createDeviceApi } from './device-api.mjs';
 import { createNotesApi } from './notes-api.mjs';
 import { createRestoreApi } from './restore.mjs';
+import { createWarRoomApi } from './warroom-api.mjs';
 import { createLoginVerifier } from './verify-login.mjs';
 
 const TABLE = 'defense_memos';
@@ -90,6 +91,22 @@ function makeDb(client) {
       if (error) throw error;
       return data;
     },
+    // 12단계: 작전실 요약용 본인 기록. 제목·본문은 읽지 않고 개수와 시각만 셉니다.
+    async warRoomRecords(userId) {
+      const count = async (table, column, extra) => {
+        let query = client.from(table).select(column, { count: 'exact', head: true }).eq('owner_id', userId);
+        if (extra) query = query.eq(...extra);
+        const { count: total, error } = await query;
+        if (error) throw error;
+        return total ?? 0;
+      };
+      const [memos, backups] = await Promise.all([count(TABLE, 'id', ['zone', 'memo']), count('defense_memo_backups', 'memo_id')]);
+      const audit = await client.from('defense_audit').select('action, at').eq('owner_id', userId).order('at', { ascending: false }).limit(500);
+      if (audit.error) throw audit.error;
+      const approvals = await client.from('defense_device_approvals').select('status').eq('user_id', userId).limit(100);
+      if (approvals.error) throw approvals.error;
+      return { memos, backups, audit: audit.data, approvals: approvals.data };
+    },
     async audit(entry) {
       const { data, error } = await client.from('defense_audit').insert(entry).select('id').single();
       if (error) throw error;
@@ -108,7 +125,7 @@ function build() {
     const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
     const verify = createLoginVerifier({ config, supabaseSecretKey: key });
     const db = makeDb(client);
-    cached = { notes: createNotesApi({ verify, db }), restore: createRestoreApi({ verify, db }), device: createDeviceApi({ verify, db }) };
+    cached = { notes: createNotesApi({ verify, db }), restore: createRestoreApi({ verify, db }), device: createDeviceApi({ verify, db }), warRoom: createWarRoomApi({ verify, db }) };
   } catch (error) {
     console.error('notes api not configured', error?.message ?? 'unknown');
     cached = null;
@@ -119,6 +136,7 @@ function build() {
 export const getNotesApi = () => build()?.notes ?? null;
 export const getRestoreApi = () => build()?.restore ?? null;
 export const getDeviceApi = () => build()?.device ?? null;
+export const getWarRoomApi = () => build()?.warRoom ?? null;
 
 export function notConfigured(response) {
   response.setHeader('Cache-Control', 'no-store');

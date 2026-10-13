@@ -48,9 +48,10 @@ async function runSimulation() {
 // 점검이 보내는 모든 요청에 그 점검의 attackId를 붙입니다(요청 헤더 X-Attack-Id·X-Aleph-Attack-Id, User-Agent, 주소 쿼리 attackId).
 // 그래야 실행 기록(어떤 요청이 어떤 점검의 것인지)을 대조할 수 있습니다. 읽기(GET) 요청만 보냅니다.
 function probe(attackId, url, options = {}, { tagQuery = true } = {}) {
-  const target = new URL(url);
   // 시작 틀의 1단계 계약(test/r5.test.mjs)은 /data.json을 쿼리 없이 읽는 것이라 그 요청에는 쿼리 표식을 붙이지 않습니다.
-  if (tagQuery) target.searchParams.set('attackId', attackId);
+  // 심판의 격리 환경은 URL의 searchParams를 제공하지 않으므로 쿼리는 문자열로 붙입니다.
+  const href = String(url);
+  const target = new URL(tagQuery ? `${href}${href.includes('?') ? '&' : '?'}attackId=${encodeURIComponent(attackId)}` : href);
   return fetch(target, {
     redirect: 'error', signal: AbortSignal.timeout(10000), ...options,
     headers: { ...(options.headers ?? {}), 'X-Attack-Id': attackId, 'X-Aleph-Attack-Id': attackId, 'User-Agent': `aleph-attack-check/${attackId}` },

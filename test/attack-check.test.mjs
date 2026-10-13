@@ -14,7 +14,7 @@ async function withFakeFetch(run) {
   globalThis.fetch = async (url, options = {}) => {
     methods.push(options.method ?? 'GET');
     const target = new URL(url);
-    tags.push({ header: options.headers?.['X-Attack-Id'], alt: options.headers?.['X-Aleph-Attack-Id'], agent: options.headers?.['User-Agent'], query: target.searchParams.get('attackId') });
+    tags.push({ header: options.headers?.['X-Attack-Id'], alt: options.headers?.['X-Aleph-Attack-Id'], agent: options.headers?.['User-Agent'], query: /[?&]attackId=([^&]*)/u.exec(target.search ?? String(url))?.[1] ?? null });
     const path = target.pathname;
     if (path === '/manifest.webmanifest') return new Response(JSON.stringify({ name: 'x', display: 'standalone', start_url: '/' }), { status: 200 });
     if (path === '/data.json' || path === '/') return new Response(JSON.stringify({ notes: [] }), { status: 200 });
@@ -71,5 +71,20 @@ test('요청을 보낸 점검은 모두 자기 attackId가 붙은 요청 기록�
       if (item.observed === 'not_run') assert.equal(logged.has(item.attackId), false, `${step}단계 ${item.attackId}: 요청이 없는데 기록이 있음`);
       else assert.equal(logged.has(item.attackId), true, `${step}단계 ${item.attackId}: 요청 기록이 없음`);
     }
+  }
+});
+
+test('심판 격리 환경처럼 URL에 searchParams가 없어도 점검이 끝까지 실행된다', async () => {
+  const RealURL = globalThis.URL;
+  // 격리 환경의 URL은 searchParams가 없다(있으면 쓰는 코드가 'reading set' 오류로 멈춘다).
+  globalThis.URL = class extends RealURL { get searchParams() { return undefined; } };
+  try {
+    for (const step of [1, 2, 8, 12]) {
+      const { attempts, tags } = await withFakeFetch(() => runAttackChecks({ ...config, step }));
+      assert.ok(attempts.length >= 1 && tags.length >= 1, `${step}단계`);
+      if (step === 12) assert.ok(tags.every(tag => tag.query === tag.header), JSON.stringify(tags.find(tag => tag.query !== tag.header)));
+    }
+  } finally {
+    globalThis.URL = RealURL;
   }
 });

@@ -294,3 +294,15 @@
 실행: `npm run xdr:run -- persistence`(결과는 `xdr/persistence/result.json`), `npm run xdr:respond:persistence`, 시험은 `node --test test/xdr-persistence.test.mjs`.
 
 한계: 연습 경보 기준이며 실제 Wazuh 운영 환경에서 검증하지 않았습니다. 거부 규칙은 PC가 아니라 출발 주소 기준이고 만료 시각은 근거 경보 시각에서 60분 뒤입니다.
+## 보너스 xdr-05: 권한 가로채기 탐지
+
+`xdr/privilege/`는 계정·그룹 변경과 관리자 명령 경보를 판단하는 부품입니다(`xdr/fixtures/privilege.json`, 26건). 구조는 앞선 보너스와 같고, 내 ZTNA 판정기(`src/decider.mjs`)는 고치지 않습니다.
+
+- `read-alerts.mjs`: 시각·출발 주소·계정·규칙 수준·설명만 뽑고 비밀값처럼 보이는 값은 가립니다.
+- `patterns.json`: MITRE ATT&CK T1068·T1078 근거가 한 줄씩 있는 패턴 다섯 개(관리자 그룹 추가, 처음 보는 관리자 명령, 업무 시간 밖 권한 사용, 반복 권한 변경, 낮은 수준 신호).
+- `decide.mjs`: **다른 파일을 불러오지 않고 혼자 계산하며 `decide(alert)` 하나만 내보냅니다.** T1068·T1078 표시가 있고 규칙 수준이 10 이상(또는 8 이상이면서 신호가 둘 이상)이면 `block`, 수준 5 이상의 애매한 신호는 `alert`, 나머지는 `record`입니다. 취소·실패·변경 없음 같은 표현이 있으면 차단하지 않습니다.
+- `respond.mjs`: 차단 후보만 만료 시각과 근거 경보 번호가 붙은 거부 규칙(`block-rules.json`)으로 내보내고, 알림을 `xdr/alerts.log`에 한 줄씩 쌓습니다. 정상·알림 경보에도 나온 주소는 규칙에 넣지 않습니다.
+
+실행: `npm run xdr:run -- privilege`(결과는 `xdr/privilege/result.json`), `npm run xdr:respond:privilege`, 시험은 `node --test test/xdr-privilege.test.mjs`.
+
+한계: 연습 경보 기준이며 실제 Wazuh 운영 환경에서 검증하지 않았습니다. 거부 규칙은 계정 세션이 아니라 출발 주소 기준이고 만료 시각은 근거 경보 시각에서 60분 뒤입니다.

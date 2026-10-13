@@ -69,7 +69,7 @@ function makeDb(client) {
     // 10단계: 사본(읽기 전용)과 감사 기록(추가만). 복원은 지정한 메모 한 건의 upsert뿐입니다.
     async getBackup(id) {
       const { data, error } = await client.from('defense_memo_backups')
-        .select('memo_id, owner_id, title, body, content_sha256').eq('memo_id', id).maybeSingle();
+        .select('memo_id, owner_id, title, body, content_sha256, backed_up_at').eq('memo_id', id).maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -78,8 +78,9 @@ function makeDb(client) {
       if (error) throw error;
     },
     async audit(entry) {
-      const { error } = await client.from('defense_audit').insert(entry);
+      const { data, error } = await client.from('defense_audit').insert(entry).select('id').single();
       if (error) throw error;
+      return data;
     },
   };
 }

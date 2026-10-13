@@ -27,7 +27,7 @@ function setup() {
     async getBackup(id) { return backups.get(id) ?? null; },
     async getRow(id) { const r = rows.get(id); return r ? { ...r } : null; },
     async restoreMemo(row) { rows.set(row.id, { ...row, zone: 'memo' }); },
-    async audit(entry) { audit.push(entry); },
+    async audit(entry) { audit.push(entry); return { id: audit.length }; },
   };
   const verify = async (authorization) => ({ 'Bearer a': { userId: A }, 'Bearer b': { userId: B } })[authorization] ?? null;
   return { rows, backups, audit, restore: createRestoreApi({ verify, db }) };
@@ -54,7 +54,10 @@ test('변조된 메모 한 건만 사본으로 복원하고 다른 메모·감�
   const result = await call(restore, { headers: { authorization: 'Bearer b' }, query: { id: M1 } });
   assert.equal(result.status, 200);
   assert.equal(result.body.restored, true);
-  assert.deepEqual(Object.keys(result.body).sort(), ['contentSha256', 'id', 'restored']); // 내용은 응답에 없다
+  assert.equal(result.body.verified, true);
+  assert.equal(result.body.auditRecorded, true);
+  assert.deepEqual(result.body.plan.changes, ['title', 'body']);
+  assert.equal(JSON.stringify(result.body).includes('원본 내용'), false); // 내용은 응답에 없다
   assert.deepEqual([rows.get(M1).title, rows.get(M1).body, rows.get(M1).owner_id], ['원본', '원본 내용', B]);
   assert.deepEqual(rows.get(M2), before.m2);
   assert.deepEqual(rows.get(M3), before.m3);
@@ -98,4 +101,43 @@ test('사본 해시가 맞지 않거나 현재 소유자가 다르면 덮어쓰�
   const owner = setup();
   owner.rows.get(M1).owner_id = A;
   assert.equal((await call(owner.restore, { headers: { authorization: 'Bearer b' }, query: { id: M1 } })).status, 409);
+});
+
+test('경로가 :id 그대로 오면 본문의 id 한 건만 복원한다', async () => {
+  const { rows, restore } = setup();
+  rows.get(M1).title = '변조';
+  const result = await call(restore, { headers: { authorization: 'Bearer b' }, query: { id: ':id' }, body: { id: M1 } });
+  assert.equal(result.body.restored, true);
+  assert.equal(rows.get(M1).title, '원본');
+  assert.equal((await call(restore, { headers: { authorization: 'Bearer b' }, query: { id: ':id' }, body: {} })).status, 400);
+});
+
+test('요청이 보낸 소유자·해시·내용이 사본과 다르면 복원하지 않고 거부 기록만 남긴다', async () => {
+  const { rows, backups, audit, restore } = setup();
+  rows.get(M1).title = '변조';
+  const good = backups.get(M1).content_sha256;
+  for (const claim of [{ contentSha256: 'f'.repeat(64) }, { owner_id: A }, { title: '변조', body: '변조된 내용' }, { sha256: 'zz' }]) {
+    const result = await call(restore, { headers: { authorization: 'Bearer b' }, query: { id: M1 }, body: claim });
+    assert.equal(result.status, 409, JSON.stringify(claim));
+    assert.equal(result.body.verified, false);
+    assert.equal(result.body.restored, false);
+    assert.equal(rows.get(M1).title, '변조');
+  }
+  assert.equal(audit.filter(entry => entry.action === 'restore_refused').length, 4);
+  assert.equal(audit[0].action, 'earlier');
+  // 사본과 같은 주장은 통과해 복원된다(sha256: 접두와 대문자도 허용).
+  const ok = await call(restore, { headers: { authorization: 'Bearer b' }, query: { id: M1 }, body: { contentSha256: 'sha256:' + good.toUpperCase() } });
+  assert.equal(ok.body.restored, true);
+  assert.equal(rows.get(M1).title, '원본');
+});
+
+test('dryRun은 바뀔 항목만 보여 주고 아무것도 바꾸지 않는다', async () => {
+  const { rows, audit, restore } = setup();
+  rows.get(M1).body = '변조';
+  const result = await call(restore, { headers: { authorization: 'Bearer b' }, query: { id: M1 }, body: { dryRun: true } });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.dryRun, true);
+  assert.deepEqual(result.body.plan.changes, ['body']);
+  assert.equal(rows.get(M1).body, '변조');
+  assert.equal(audit.length, 1);
 });

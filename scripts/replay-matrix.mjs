@@ -103,14 +103,16 @@ export async function authChecks({ base, accounts, fetcher = fetch, now = () => 
     actual: `HTTP ${res.status}${note ? ` · ${note}` : ''}`, requestId: res.requestId, checkedAt: now().toISOString(), result: ok ? 'pass' : 'fail' });
   const login = async (account) => {
     const result = await send('POST', '/api/auth/login', null, { email: account.email, password: account.password });
-    return result.status === 200 && result.json?.access_token ? result.json.access_token : null;
+    return { token: result.status === 200 && result.json?.access_token ? result.json.access_token : null, result };
   };
-  const a = await login(accounts.a);
+  const { token: a, result: loginA } = await login(accounts.a);
   if (!a) {
-    rows.push({ step: 4, id: 'login_a', kind: 'live', request: '시험 계정 A 로그인', expected: '200과 토큰', actual: '로그인하지 못함', requestId: '없음', checkedAt: now().toISOString(), result: 'fail' });
+    // 이유를 알 수 있게 상태 코드와 서버의 오류 이름만 적습니다(계정 정보·토큰은 적지 않습니다).
+    const why = [loginA.json?.error, loginA.json?.message].filter(item => typeof item === 'string').join(': ').slice(0, 100);
+    rows.push({ step: 4, id: 'login_a', kind: 'live', request: '시험 계정 A 로그인', expected: '200과 토큰', actual: `로그인하지 못함 (HTTP ${loginA.status}${why ? ` · ${why}` : ''})`, requestId: loginA.requestId, checkedAt: now().toISOString(), result: 'fail' });
     return rows;
   }
-  const b = accounts.b ? await login(accounts.b) : null;
+  const b = accounts.b ? (await login(accounts.b)).token : null;
   const ORIGINAL = '매트릭스 시험 원본';
   const TAMPERED = '매트릭스 변조';
   const created = await send('POST', '/api/notes', a, { title: ORIGINAL, body: '가상 시험 메모(곧 삭제)' });

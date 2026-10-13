@@ -91,6 +91,8 @@ test('복구가 실제로 되돌리지 못하면 fail로 기록하고 로그인�
   assert.equal(broken.find(row => row.id === 'restore_one_memo').result, 'fail');
   const noLogin = await authChecks({ base, accounts: { a: { email: 'nobody@x.test', password: 'x' } }, fetcher: server().fetcher });
   assert.deepEqual(noLogin.map(row => [row.id, row.result]), [['login_a', 'fail']]);
+  assert.match(noLogin[0].actual, /HTTP 401 · bad/u); // 이유(상태 코드·서버 오류 이름)는 남고
+  assert.equal(JSON.stringify(noLogin).includes('nobody@x.test'), false); // 계정 정보는 남지 않는다
 });
 
 test('표에는 계정 정보나 토큰이 나오지 않는다', async () => {

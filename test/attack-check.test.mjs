@@ -62,7 +62,9 @@ test('요청을 보낸 점검은 모두 자기 attackId가 붙은 요청 기록�
     const { attempts, tags } = await withFakeFetch(() => runAttackChecks({ ...config, step }));
     for (const tag of tags) {
       // 같은 점검 ID가 헤더·User-Agent·주소 쿼리에 모두 실려야 한다.
-      assert.ok(tag.header && tag.header === tag.alt && tag.header === tag.query && tag.agent === `aleph-attack-check/${tag.header}`, JSON.stringify(tag));
+      // 1~2단계의 공개 파일 요청은 시작 틀 계약(쿼리 없는 /data.json) 때문에 쿼리 표식만 빠진다.
+      const publicFile = step <= 2 && (tag.header === 'anonymous_note_read' || tag.header === 'static_note_seed');
+      assert.ok(tag.header && tag.header === tag.alt && tag.agent === `aleph-attack-check/${tag.header}` && (publicFile ? tag.query === null : tag.header === tag.query), JSON.stringify(tag));
     }
     const logged = new Set(tags.map(tag => tag.header));
     for (const item of attempts) {

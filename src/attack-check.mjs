@@ -47,9 +47,10 @@ async function runSimulation() {
 
 // 점검이 보내는 모든 요청에 그 점검의 attackId를 붙입니다(요청 헤더 X-Attack-Id·X-Aleph-Attack-Id, User-Agent, 주소 쿼리 attackId).
 // 그래야 실행 기록(어떤 요청이 어떤 점검의 것인지)을 대조할 수 있습니다. 읽기(GET) 요청만 보냅니다.
-function probe(attackId, url, options = {}) {
+function probe(attackId, url, options = {}, { tagQuery = true } = {}) {
   const target = new URL(url);
-  target.searchParams.set('attackId', attackId);
+  // 시작 틀의 1단계 계약(test/r5.test.mjs)은 /data.json을 쿼리 없이 읽는 것이라 그 요청에는 쿼리 표식을 붙이지 않습니다.
+  if (tagQuery) target.searchParams.set('attackId', attackId);
   return fetch(target, {
     redirect: 'error', signal: AbortSignal.timeout(10000), ...options,
     headers: { ...(options.headers ?? {}), 'X-Attack-Id': attackId, 'X-Aleph-Attack-Id': attackId, 'User-Agent': `aleph-attack-check/${attackId}` },
@@ -81,7 +82,7 @@ async function collectAttackChecks(config) {
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
   // 1~2단계의 공개 파일 점검에만 쓰는 요청입니다(3단계부터는 보내지 않습니다).
   const response = config.step <= 2
-    ? await probe(config.step === 1 ? 'anonymous_note_read' : 'static_note_seed', new URL('/data.json', app)) : null;
+    ? await probe(config.step === 1 ? 'anonymous_note_read' : 'static_note_seed', new URL('/data.json', app), {}, { tagQuery: false }) : null;
   if (config.step >= 3) {
     // 3~5단계: 로그인 없이, 그리고 가짜 토큰으로 자료 API를 부르면 JSON 오류로 거부되어야 합니다.
     const ask = async (attackId, headers) => {

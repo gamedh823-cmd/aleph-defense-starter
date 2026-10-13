@@ -38,7 +38,7 @@
       "service": "notes",
       "method": "POST",
       "pathPattern": "/api/restore/:id",
-      "zone": "restore"
+      "zone": "my-notes"
     }
   ],
   "originalApiUrl": "https://fqiifekzzzpjtppkkcic.supabase.co/rest/v1/defense_memos",
@@ -46,6 +46,6 @@
     "service": "notes",
     "method": "POST",
     "pathPattern": "/api/restore/:id",
-    "zone": "restore"
+    "zone": "my-notes"
   }
 }

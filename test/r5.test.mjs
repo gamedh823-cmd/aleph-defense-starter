@@ -31,26 +31,29 @@ test('build identity uses Vercel Git and deployment metadata', () => {
   assert.throws(() => deploymentIdentity({ ...env, VERCEL_GIT_COMMIT_SHA: 'short' }, config));
 });
 
+// 운영 측 12단계 규칙: 점검은 공개 파일(/data.json)을 로그인 없이 읽어 메모가 있으면 breached, 없으면 blocked로 적고,
+// 요청에는 alephEvidence로 사례(caseId)를 연결한다. 응답 상태(HTTP n)만 observed에 남긴다.
 test('first attack check reads public data.json without credentials', async () => {
   const originalFetch = globalThis.fetch;
-  let requestUrl;
-  let options;
+  const requests = [];
   try {
     globalThis.fetch = async (url, init) => {
-      requestUrl = String(url);
-      options = init;
-      return new Response(JSON.stringify({ sampleMarker: 'SAMPLE_NOTE_1', notes: [{ title: '가상' }] }), {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify({ sampleMarker: 'SAMPLE_NOTE_1', notes: [{ title: '가상', body: '내용' }] }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
     };
-    const [result] = await runAttackChecks(config);
-    assert.equal(requestUrl, 'https://student-defense.vercel.app/data.json');
-    assert.equal(options.redirect, 'error');
-    assert.match(result.observed, /확인 표시가 보임/u);
-    globalThis.fetch = async () => new Response('<html>not the data</html>', { status: 200 });
-    const [failed] = await runAttackChecks(config);
-    assert.match(failed.observed, /보이지 않음/u);
+    const attempts = await runAttackChecks(config);
+    const first = attempts.find(item => item.attackId === 's01_static_notes');
+    const read = requests.find(({ init }) => init.alephEvidence.caseId === 's01_static_notes');
+    assert.equal(read.url, 'https://student-defense.vercel.app/data.json');
+    assert.ok(!read.init.headers.authorization && !read.init.credentials);
+    assert.equal(first.observed, 'HTTP 200');
+    assert.equal(first.result, 'breached'); // 공개 파일에서 메모가 읽혔다
+    globalThis.fetch = async () => new Response(JSON.stringify({ sampleMarker: 'SAMPLE_NOTE_1', notes: [] }), { status: 200 });
+    const cleaned = await runAttackChecks(config);
+    assert.equal(cleaned.find(item => item.attackId === 's01_static_notes').result, 'blocked');
   } finally {
     globalThis.fetch = originalFetch;
   }

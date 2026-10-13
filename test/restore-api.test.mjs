@@ -143,7 +143,7 @@ test('dryRun은 바뀔 항목만 보여 주고 아무것도 바꾸지 않는다'
 });
 
 test('제출 묶음용 로컬 모의 복구 점검은 실제로 모두 통과한다', async () => {
-  const { simulateRestore } = await import('../src/attack-check.mjs');
+  const { simulateRestore } = await import('../scripts/simulate-restore.mjs');
   const result = await simulateRestore();
   assert.deepEqual(result, { refusedMismatch: true, restoredTampered: true, restoredDeleted: true,
     sameAsBackup: true, othersKept: true, auditKept: true });

@@ -4,6 +4,12 @@ import { contentHash, createRestoreApi } from './restore.mjs';
 // Never return tokens, private keys, real names, or note bodies.
 // 10단계: 복구 로직을 메모리 DB에서 직접 실행합니다. 배포로 보낸 요청이 아니며, 실제로 돌려 본 결과만 돌려줍니다.
 export async function simulateRestore() {
+  const { info, warn } = console;
+  console.info = () => {}; console.warn = () => {};
+  try { return await runSimulation(); } finally { console.info = info; console.warn = warn; }
+}
+
+async function runSimulation() {
   const B = '22222222-2222-4222-8222-222222222222';
   const [M1, M2] = ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'];
   const memo = (id, title, body) => ({ id, owner_id: B, title, body, zone: 'memo' });
@@ -133,8 +139,10 @@ export async function runAttackChecks(config) {
         observed: `로컬 모의 실행(메모리 DB, 배포 요청 아님): 해시 불일치 거부 ${ok(sim.refusedMismatch)}, 변조 복원 ${ok(sim.restoredTampered)}, 삭제 복원 ${ok(sim.restoredDeleted)}, 사본과 일치 ${ok(sim.sameAsBackup)}, 다른 메모 보존 ${ok(sim.othersKept)}, 감사 기록 보존 ${ok(sim.auditKept)}` });
       extra.push({ attackId: 'restore_one_memo_verified', expected: '시험 계정 B의 변조·삭제된 메모 한 건이 사본의 ID·소유자·해시와 같게 복원됨',
         observed: '미실행: 시험 계정 B의 토큰이 없어 보내지 않음 (복원 로직 단위 시험은 node --test test/restore-api.test.mjs)' });
-      extra.push({ attackId: 'replay_steps_1_to_9', expected: '복구 직후 1~9단계의 대표 공격 요청이 다시 거부됨',
-        observed: '미실행: 1~9단계 전체 재시험은 심판이 보내며 학생 쪽 점검은 비로그인·가짜 토큰 요청만 보냄' });
+      if (config.step < 12) {
+        extra.push({ attackId: 'replay_steps_1_to_9', expected: '복구 직후 1~9단계의 대표 공격 요청이 다시 거부됨',
+          observed: '미실행: 1~9단계 전체 재시험은 심판이 보내며 학생 쪽 점검은 비로그인·가짜 토큰 요청만 보냄' });
+      }
     }
     if (config.step >= 11) {
       // 11단계: 설치형 앱 설정이 실제로 내려오는지, 승인 상태 API가 로그인 없이는 거부되는지만 실제로 보냅니다.

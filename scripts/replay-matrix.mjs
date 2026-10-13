@@ -76,15 +76,85 @@ export async function localChecks({ decide, detect, fixtureRequests }) {
   ].map(item => ({ ...item, kind: 'local', requestId: 'local', result: item.actual === item.want ? 'pass' : 'fail' }));
 }
 
-export const notRun = () => [
-  { step: 4, id: 'own_memo_allowed', request: '시험 계정 A가 자기 메모 조회', expected: '200', ...reason(NEEDS_TOKEN) },
-  { step: 4, id: 'other_memo_denied', request: '시험 계정 B가 A의 메모 조회·수정', expected: '404', ...reason(NEEDS_TOKEN) },
+export const notRun = ({ withA = false, withB = false } = {}) => [
+  ...(withA ? [] : [{ step: 4, id: 'own_memo_allowed', request: '시험 계정 A가 자기 메모 조회', expected: '200', ...reason(NEEDS_TOKEN) }]),
+  ...(withB ? [] : [{ step: 4, id: 'other_memo_denied', request: '시험 계정 B가 A의 메모 조회·수정', expected: '404', ...reason(withA ? '두 번째 시험 계정(B) 정보가 없어 보내지 않음' : NEEDS_TOKEN) }]),
   { step: 8, id: 'student_notice_edit', request: '일반 학생 계정이 강사 공지 수정', expected: '403', ...reason(NEEDS_TOKEN) },
-  { step: 10, id: 'restore_one_memo', request: '시험 계정 B의 변조된 메모 한 건 복원', expected: '사본의 ID·소유자·해시와 같음', ...reason(NEEDS_TOKEN) },
+  ...(withA ? [] : [{ step: 10, id: 'restore_one_memo', request: '변조한 메모 한 건 복원', expected: '사본의 ID·소유자·해시와 같음', ...reason(NEEDS_TOKEN) }]),
   { step: 11, id: 'device_approved_flow', request: '승인 요청 → 운영자 승인 → 자료 열림', expected: '승인 전 자료 없음, 승인 뒤 정상', ...reason('운영자 승인 절차를 직접 해 본 기록이 없음') },
   { step: 11, id: 'signed_request_tamper', request: '서명한 요청의 경로·본문 변조', expected: '거부', ...reason('서명 키·검증 코드가 이 저장소에 없고 심판·운영 엔진이 확인') },
   { step: 12, id: 'full_replay_41', request: '41종 공격 전체 재시험', expected: '모두 거부, 정상 요청은 허용', ...reason('심판이 보내며 이 표는 41종 전체가 아님') },
 ];
+
+// 시험 계정으로 실제 요청을 보내는 점검입니다. 계정 정보는 환경변수로만 받고 출력·저장하지 않으며, 시험용 메모는 끝에 지웁니다.
+// A만 있으면 자기 메모와 복구 시험을, B도 있으면 다른 사용자의 메모 요청 시험까지 실행합니다.
+export async function authChecks({ base, accounts, fetcher = fetch, now = () => new Date() }) {
+  const rows = [];
+  const send = async (method, path, token, body) => {
+    const response = await fetcher(new URL(path, base), {
+      method, redirect: 'error', signal: AbortSignal.timeout(15000),
+      headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const json = await response.json().catch(() => null);
+    return { status: response.status, json, requestId: response.headers.get('x-vercel-id') ?? '없음' };
+  };
+  const add = (step, id, request, expected, res, ok, note = '') => rows.push({ step, id, kind: 'live', request, expected,
+    actual: `HTTP ${res.status}${note ? ` · ${note}` : ''}`, requestId: res.requestId, checkedAt: now().toISOString(), result: ok ? 'pass' : 'fail' });
+  const login = async (account) => {
+    const result = await send('POST', '/api/auth/login', null, { email: account.email, password: account.password });
+    return result.status === 200 && result.json?.access_token ? result.json.access_token : null;
+  };
+  const a = await login(accounts.a);
+  if (!a) {
+    rows.push({ step: 4, id: 'login_a', kind: 'live', request: '시험 계정 A 로그인', expected: '200과 토큰', actual: '로그인하지 못함', requestId: '없음', checkedAt: now().toISOString(), result: 'fail' });
+    return rows;
+  }
+  const b = accounts.b ? await login(accounts.b) : null;
+  const ORIGINAL = '매트릭스 시험 원본';
+  const TAMPERED = '매트릭스 변조';
+  const created = await send('POST', '/api/notes', a, { title: ORIGINAL, body: '가상 시험 메모(곧 삭제)' });
+  const id = created.json?.id;
+  add(4, 'create_own_memo', '시험 계정 A가 시험용 메모 추가', '201과 메모 ID', created, created.status === 201 && typeof id === 'string');
+  if (typeof id !== 'string') return rows;
+  try {
+    const own = await send('GET', `/api/notes/${id}`, a);
+    add(4, 'own_memo_allowed', '시험 계정 A가 자기 메모 조회', '200과 같은 제목', own, own.status === 200 && own.json?.title === ORIGINAL);
+    if (b) {
+      const read = await send('GET', `/api/notes/${id}`, b);
+      add(4, 'other_memo_read_denied', '시험 계정 B가 A의 메모 조회', '404(존재 여부도 알리지 않음)', read, read.status === 404);
+      const edit = await send('PUT', `/api/notes/${id}`, b, { title: 'B의 변조' });
+      add(4, 'other_memo_edit_denied', '시험 계정 B가 A의 메모 수정', '404', edit, edit.status === 404);
+      const restoreOther = await send('POST', `/api/restore/${id}`, b, {});
+      add(10, 'other_memo_restore_denied', '시험 계정 B가 A의 메모 복구 호출', '404', restoreOther, restoreOther.status === 404);
+      const list = await send('GET', '/api/my/notes', b);
+      add(8, 'other_list_excludes', '시험 계정 B의 내 메모 목록', 'A의 메모가 없음', list, list.status === 200 && Array.isArray(list.json) && !list.json.some(item => item.id === id));
+      const still = await send('GET', `/api/notes/${id}`, a);
+      add(4, 'own_memo_unchanged_after_b', 'B의 시도 뒤 A의 메모', '제목이 그대로', still, still.status === 200 && still.json?.title === ORIGINAL);
+    }
+    // 10단계: 변조 → 틀린 해시 주장은 거부 → 복구 → 사본과 같은지 확인
+    const tamper = await send('PUT', `/api/notes/${id}`, a, { title: TAMPERED, body: '변조된 내용' });
+    add(10, 'tamper_own_memo', '시험 계정 A가 자기 시험 메모를 변조', '200', tamper, tamper.status === 200);
+    const bad = await send('POST', `/api/restore/${id}`, a, { contentSha256: 'f'.repeat(64) });
+    const afterBad = await send('GET', `/api/notes/${id}`, a);
+    add(10, 'restore_bad_hash_refused', '틀린 해시를 주장하며 복구 호출', '409로 거부하고 변조 상태 그대로', bad,
+      bad.status === 409 && afterBad.json?.title === TAMPERED, `거부 뒤 제목 ${afterBad.json?.title === TAMPERED ? '그대로' : '바뀜'}`);
+    const restored = await send('POST', `/api/restore/${id}`, a, {});
+    const after = await send('GET', `/api/notes/${id}`, a);
+    const okRestore = restored.status === 200 && restored.json?.restored === true && restored.json?.verified === true && after.json?.title === ORIGINAL;
+    add(10, 'restore_one_memo', '변조한 메모 한 건 복구', '200, 검증됨, 제목이 사본(원본)과 같음', restored, okRestore,
+      `검증 ${restored.json?.verified ? '예' : '아니오'}, 감사 기록 ${restored.json?.auditRecorded ? '남음' : '없음'}, 복구 뒤 제목 ${after.json?.title === ORIGINAL ? '원본과 같음' : '다름'}`);
+    add(10, 'restore_audit_recorded', '복구가 감사 기록에 남았는지(응답의 감사 기록 번호)', 'auditRecorded true', restored, restored.json?.auditRecorded === true);
+    const summary = await send('GET', '/api/warroom/summary', a);
+    const room = summary.json?.restore;
+    add(12, 'warroom_matches', '작전실 요약의 복구 기록', '복구 1 이상, 사본이 메모 수 이상', summary,
+      summary.status === 200 && room?.restoresRecorded >= 1 && room?.backupCoversMemos === true,
+      `메모 ${room?.memos}, 사본 ${room?.backups}, 복구 ${room?.restoresRecorded}`);
+  } finally {
+    await send('DELETE', `/api/notes/${id}`, a).catch(() => null);
+  }
+  return rows;
+}
 
 export async function runLive(checks, { fetcher = fetch, now = () => new Date() } = {}) {
   const rows = [];
@@ -129,7 +199,14 @@ async function main(args) {
   const { detect } = await import(pathToFileURL(resolve(root, 'src', 'detect.mjs')).href);
   const { fixtureRequests } = await import(pathToFileURL(resolve(root, 'scripts', 'fixture-7.mjs')).href);
   const checkedAt = new Date().toISOString();
-  const rows = [...await runLive(liveChecks(base)), ...await localChecks({ decide, detect, fixtureRequests }), ...notRun()]
+  const env = process.env;
+  const accounts = {
+    a: env.MATRIX_A_EMAIL && env.MATRIX_A_PASSWORD ? { email: env.MATRIX_A_EMAIL, password: env.MATRIX_A_PASSWORD } : null,
+    b: env.MATRIX_B_EMAIL && env.MATRIX_B_PASSWORD ? { email: env.MATRIX_B_EMAIL, password: env.MATRIX_B_PASSWORD } : null,
+  };
+  const authRows = accounts.a ? await authChecks({ base, accounts }) : [];
+  const rows = [...await runLive(liveChecks(base)), ...authRows, ...await localChecks({ decide, detect, fixtureRequests }),
+    ...notRun({ withA: Boolean(accounts.a), withB: Boolean(accounts.a && accounts.b) })]
     .sort((a, b) => a.step - b.step);
   const table = render(rows, checkedAt);
   process.stdout.write(`${table}\n`);

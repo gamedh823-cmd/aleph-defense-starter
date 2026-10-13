@@ -16,6 +16,7 @@
     "xdr:apply": "node xdr/brute-force/apply.mjs",
     "xdr:apply:web": "node xdr/web-injection/apply.mjs",
     "xdr:respond:cve": "node xdr/known-cve/respond.mjs",
+    "xdr:respond:persistence": "node xdr/persistence/respond.mjs",
     "policy:diff": "node scripts/policy-restore.mjs",
     "policy:restore": "node scripts/policy-restore.mjs --restore",
     "matrix": "node scripts/replay-matrix.mjs"

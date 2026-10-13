@@ -1,0 +1,47 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "persistence",
+  "source": "MITRE ATT&CK T1543 Create or Modify System Process / T1053 Scheduled Task/Job",
+  "patterns": [
+    {
+      "id": "unsigned-new-service",
+      "name": "서명 없는 새 서비스 등록",
+      "verdict": "block",
+      "condition": "T1543 표시가 있고 서명 없는 서비스·평소 목록에 없는 서비스가 새로 등록되거나 실행 파일이 바뀌었으며, 규칙 수준이 10 이상임",
+      "match": { "mitre": "T1543", "minLevel": 10, "descriptionPatterns": ["서비스", "서명 없", "평소 목록에 없", "다시 켜도 남도록"] },
+      "evidence": "MITRE ATT&CK T1543: 공격자는 서명 없는 서비스를 새로 등록하거나 기존 서비스의 실행 파일을 바꿔 재부팅 뒤에도 살아남습니다. 솔라윈즈 사건에서도 서비스로 도는 추가 악성코드가 쓰였습니다."
+    },
+    {
+      "id": "unfamiliar-scheduled-task",
+      "name": "낯선 예약 작업",
+      "verdict": "block",
+      "condition": "T1053 표시가 있고 처음 보는 예약 작업이 임시 폴더의 프로그램을 가리키거나 이름이 임의 문자열이며, 규칙 수준이 10 이상임",
+      "match": { "mitre": "T1053", "minLevel": 10, "descriptionPatterns": ["예약 작업", "처음 보는", "임의 문자열", "수업 시간 밖"] },
+      "evidence": "MITRE ATT&CK T1053: 예약 작업은 다시 켜도 일정 시각에 다시 실행되게 하는 대표적인 지속 수단이며, 솔라윈즈 공격자도 예약 작업을 잠깐 바꿨다 되돌렸습니다."
+    },
+    {
+      "id": "startup-folder-change",
+      "name": "시작 폴더 변경",
+      "verdict": "block",
+      "condition": "시작 폴더·시작 프로그램에 평소 목록에 없는 실행 파일이 추가되고 규칙 수준이 10 이상임",
+      "match": { "mitre": "T1543", "minLevel": 10, "descriptionPatterns": ["시작 폴더", "시작 프로그램", "시작 항목"] },
+      "evidence": "MITRE ATT&CK T1543 계열 지속 수단: 시작 폴더에 프로그램을 넣으면 로그인할 때마다 다시 실행됩니다. 평소 목록에 없는 추가는 정상 설치와 구분해 봅니다."
+    },
+    {
+      "id": "repeated-registration",
+      "name": "반복되는 서비스·작업 등록",
+      "verdict": "block",
+      "condition": "같은 출발 주소에서 서명 없는 서비스·예약 작업 등록이 3번 이상 이어짐",
+      "match": { "mitre": ["T1543", "T1053"], "minCount": 3 },
+      "evidence": "MITRE ATT&CK T1543: 원격 주소에서 서명 없는 등록이 연속되면 실수가 아니라 여러 곳에 지속 수단을 심는 시도로 봅니다."
+    },
+    {
+      "id": "weak-persistence-signal",
+      "name": "낮은 수준의 지속성 신호",
+      "verdict": "alert",
+      "condition": "T1543·T1053 표시가 있고 규칙 수준이 5 이상 9 이하이거나, 서명을 아직 모르는 수업 도구·임시 폴더 파일 하나만 보임",
+      "match": { "mitre": ["T1543", "T1053"], "minLevel": 5, "maxLevel": 9 },
+      "evidence": "MITRE ATT&CK T1543·T1053: 서명 확인 전이거나 서비스 등록 없이 파일만 생긴 경우는 정상 수업 도구와 구분하기 어려워 막지 않고 알림만 남깁니다."
+    }
+  ]
+}

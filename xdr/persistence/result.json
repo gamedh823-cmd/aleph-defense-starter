@@ -1,0 +1,155 @@
+{
+  "schema": "aleph.xdr.result.v1",
+  "moduleKey": "persistence",
+  "decisions": [
+    {
+      "alertId": "ps-01",
+      "action": "block",
+      "confidence": 0.96,
+      "reason": "패턴: 서명 없는 새 서비스 등록"
+    },
+    {
+      "alertId": "ps-02",
+      "action": "block",
+      "confidence": 0.96,
+      "reason": "패턴: 낯선 예약 작업"
+    },
+    {
+      "alertId": "ps-03",
+      "action": "block",
+      "confidence": 0.94,
+      "reason": "패턴: 시작 폴더 변경"
+    },
+    {
+      "alertId": "ps-04",
+      "action": "block",
+      "confidence": 0.96,
+      "reason": "패턴: 서명 없는 새 서비스 등록, 반복되는 서비스·작업 등록"
+    },
+    {
+      "alertId": "ps-05",
+      "action": "block",
+      "confidence": 0.92,
+      "reason": "패턴: 낯선 예약 작업"
+    },
+    {
+      "alertId": "ps-06",
+      "action": "block",
+      "confidence": 0.96,
+      "reason": "패턴: 서명 없는 새 서비스 등록"
+    },
+    {
+      "alertId": "ps-07",
+      "action": "block",
+      "confidence": 0.94,
+      "reason": "패턴: 낯선 예약 작업, 시작 폴더 변경"
+    },
+    {
+      "alertId": "ps-08",
+      "action": "block",
+      "confidence": 0.96,
+      "reason": "패턴: 서명 없는 새 서비스 등록"
+    },
+    {
+      "alertId": "ps-09",
+      "action": "alert",
+      "confidence": 0.55,
+      "reason": "패턴: 낮은 수준의 지속성 신호"
+    },
+    {
+      "alertId": "ps-10",
+      "action": "alert",
+      "confidence": 0.55,
+      "reason": "패턴: 낮은 수준의 지속성 신호"
+    },
+    {
+      "alertId": "ps-11",
+      "action": "alert",
+      "confidence": 0.55,
+      "reason": "패턴: 낮은 수준의 지속성 신호"
+    },
+    {
+      "alertId": "ps-12",
+      "action": "alert",
+      "confidence": 0.55,
+      "reason": "패턴: 낮은 수준의 지속성 신호"
+    },
+    {
+      "alertId": "ps-13",
+      "action": "alert",
+      "confidence": 0.6,
+      "reason": "패턴: 낮은 수준의 지속성 신호"
+    },
+    {
+      "alertId": "ps-14",
+      "action": "alert",
+      "confidence": 0.55,
+      "reason": "패턴: 낮은 수준의 지속성 신호"
+    },
+    {
+      "alertId": "ps-15",
+      "action": "alert",
+      "confidence": 0.55,
+      "reason": "패턴: 낮은 수준의 지속성 신호"
+    },
+    {
+      "alertId": "ps-16",
+      "action": "alert",
+      "confidence": 0.55,
+      "reason": "패턴: 낮은 수준의 지속성 신호"
+    },
+    {
+      "alertId": "ps-17",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "근거 패턴 없음: 지속성 표시가 없는 정상 이벤트"
+    },
+    {
+      "alertId": "ps-18",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "근거 패턴 없음: 평소 목록과 같은 정상 이벤트"
+    },
+    {
+      "alertId": "ps-19",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "근거 패턴 없음: 평소 목록과 같은 정상 이벤트"
+    },
+    {
+      "alertId": "ps-20",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "근거 패턴 없음: 지속성 표시가 없는 정상 이벤트"
+    },
+    {
+      "alertId": "ps-21",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "근거 패턴 없음: 지속성 표시가 없는 정상 이벤트"
+    },
+    {
+      "alertId": "ps-22",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "근거 패턴 없음: 지속성 표시가 없는 정상 이벤트"
+    },
+    {
+      "alertId": "ps-23",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "근거 패턴 없음: 평소 목록과 같은 정상 이벤트"
+    },
+    {
+      "alertId": "ps-24",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "근거 패턴 없음: 지속성 표시가 없는 정상 이벤트"
+    }
+  ],
+  "counts": {
+    "block": 8,
+    "alert": 8,
+    "record": 8
+  }
+}

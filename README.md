@@ -282,3 +282,15 @@
 실행: `npm run xdr:run -- known-cve`(결과는 `xdr/known-cve/result.json`), `npm run xdr:respond:cve`, 시험은 `node --test test/xdr-known-cve.test.mjs`.
 
 한계: 연습 경보 기준이며 실제 Wazuh 운영 환경에서 검증하지 않았습니다. 거부 규칙의 만료 시각은 근거 경보 시각에서 60분 뒤입니다.
+## 보너스 xdr-04: 몰래 심어진 프로그램 탐지
+
+`xdr/persistence/`는 서명 없는 새 서비스·예약 작업·시작 폴더 변경 경보를 판단하는 부품입니다(`xdr/fixtures/persistence.json`, 24건). 구조는 앞선 보너스와 같고, 내 ZTNA 판정기(`src/decider.mjs`)는 고치지 않습니다.
+
+- `read-alerts.mjs`: 시각·출발 주소·계정·규칙 수준·설명만 뽑고 비밀값처럼 보이는 값은 가립니다.
+- `patterns.json`: MITRE ATT&CK T1543·T1053 근거가 한 줄씩 있는 패턴 다섯 개(서명 없는 새 서비스 등록, 낯선 예약 작업, 시작 폴더 변경, 반복 등록, 낮은 수준 신호).
+- `decide.mjs`: **다른 파일을 불러오지 않고 혼자 계산하며 `decide(alert)` 하나만 내보냅니다.** T1543·T1053 표시가 있고 규칙 수준이 10 이상(또는 8 이상이면서 신호가 둘 이상)이면 `block`, 수준 5 이상의 애매한 신호는 `alert`, 나머지는 `record`입니다. 서명된 기존 항목·평소 시각 같은 정상 표현이 있으면 차단하지 않습니다.
+- `respond.mjs`: 차단 후보만 만료 시각과 근거 경보 번호가 붙은 거부 규칙(`block-rules.json`)으로 내보내고, 알림을 `xdr/alerts.log`에 한 줄씩 쌓습니다. 정상·알림 경보에도 나온 주소는 규칙에 넣지 않습니다.
+
+실행: `npm run xdr:run -- persistence`(결과는 `xdr/persistence/result.json`), `npm run xdr:respond:persistence`, 시험은 `node --test test/xdr-persistence.test.mjs`.
+
+한계: 연습 경보 기준이며 실제 Wazuh 운영 환경에서 검증하지 않았습니다. 거부 규칙은 PC가 아니라 출발 주소 기준이고 만료 시각은 근거 경보 시각에서 60분 뒤입니다.

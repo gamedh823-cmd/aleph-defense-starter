@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -56,6 +56,13 @@ export async function runAttackChecks(config) {
       // 6단계: 미등록 기기 공격은 운영 엔진·심판만 보낼 수 있어 학생 쪽에서는 보내지 않습니다.
       extra.push({ attackId: 'unregistered_device', expected: '등록되지 않은 기기의 요청은 판정기가 device_not_registered로 거부',
         observed: '미실행: 미등록 기기 요청은 심판이 보내며 학생 쪽 점검에서는 보내지 않음 (가상 연습은 npm run decider:test)' });
+    }
+    if (config.step >= 7) {
+      // 7단계: 이상 접속 신호와 재로그인 확인은 엔진·심판이 보내며, 재로그인 시각 계약은 현재 없습니다.
+      extra.push({ attackId: 'unusual_access_step_up', expected: '시각·네트워크·대량 행동이 겹친 가상 접속은 판정기가 step_up_required로 응답',
+        observed: '미실행: 이상 접속 사건은 심판이 보내며 학생 쪽 점검에서는 보내지 않음 (가상 연습은 npm run decider:test)' });
+      extra.push({ attackId: 'relogin_block_before_verify', expected: '추가 확인 전에는 자료가 막히고 새 로그인 뒤 요청이 허용됨',
+        observed: '미실행: 제공 엔진에 재로그인 시각 확인 계약이 없어 실제 자료 차단은 시험하지 않음' });
     }
     return [
       { attackId: 'no_token_list', expected: '로그인 없이 메모 목록을 요청하면 401 또는 403과 JSON 오류',

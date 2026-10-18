@@ -7,13 +7,53 @@ const AGENT_NAME = '등대, 낯선 접속을 가장 먼저 알아보다';
 const STAGE_LABEL = '4차 방어전 · 14단계';
 
 // 제공 CSS 는 건드리지 않고, 학생 칸의 모양은 여기서 요소별로 입힙니다(style-src 'self' 에서도 CSSOM 은 허용).
-const TONES = {
-  ok: { background: '#e7f6ec', color: '#0b5d2a', border: '1px solid #78c490' },
-  warn: { background: '#fff3df', color: '#8a4b00', border: '1px solid #efb359' },
-  bad: { background: '#fde8e8', color: '#9f1212', border: '1px solid #e58a8a' },
-  info: { background: '#e8f0fe', color: '#1a3f8f', border: '1px solid #8fb0f2' },
-  neutral: { background: '#eef1f5', color: '#2f3744', border: '1px solid #b7c0cc' },
+// 라이트·다크 두 벌의 색을 두고, 학생 칸 배너의 버튼으로 고릅니다. 선택값은 주소 뒤 #theme=… 에만 둡니다.
+const PALETTES = {
+  light: {
+    text: '#1c2533', muted: '#556070', cardBg: '#ffffff', cardLine: '#cfd6e2',
+    bannerBg: '#1f2a44', bannerText: '#ffffff',
+    tones: {
+      ok: { background: '#e7f6ec', color: '#0b5d2a', border: '1px solid #78c490' },
+      warn: { background: '#fff3df', color: '#8a4b00', border: '1px solid #efb359' },
+      bad: { background: '#fde8e8', color: '#9f1212', border: '1px solid #e58a8a' },
+      info: { background: '#e8f0fe', color: '#1a3f8f', border: '1px solid #8fb0f2' },
+      neutral: { background: '#eef1f5', color: '#2f3744', border: '1px solid #b7c0cc' },
+    },
+  },
+  dark: {
+    text: '#ecf4ff', muted: '#a9b8cc', cardBg: '#16233a', cardLine: '#3c5170',
+    bannerBg: '#0b1220', bannerText: '#ffffff',
+    tones: {
+      ok: { background: '#12392a', color: '#9be8c5', border: '1px solid #2f7d5b' },
+      warn: { background: '#4a3510', color: '#ffd28a', border: '1px solid #a8741f' },
+      bad: { background: '#4a1b22', color: '#ffb3bd', border: '1px solid #a8434f' },
+      info: { background: '#1b2e55', color: '#b9d0ff', border: '1px solid #4a6fb5' },
+      neutral: { background: '#2a3442', color: '#d5dde8', border: '1px solid #5b6b80' },
+    },
+  },
 };
+
+function initialTheme() {
+  try {
+    const match = /theme=(light|dark)/u.exec(globalThis.location?.hash ?? '');
+    if (match) return match[1];
+  } catch { /* 주소를 읽지 못하면 라이트로 시작합니다. */ }
+  return 'light';
+}
+
+let theme = initialTheme();
+let redraw = () => {}; // createStudentView 가 앱의 onChange 를 받아 채웁니다.
+const palette = () => PALETTES[theme];
+
+function toggleTheme() {
+  theme = theme === 'dark' ? 'light' : 'dark';
+  try {
+    if (globalThis.history && globalThis.location) {
+      globalThis.history.replaceState(null, '', `${globalThis.location.pathname}${globalThis.location.search}#theme=${theme}`);
+    }
+  } catch { /* 주소를 바꾸지 못해도 이번 화면에서는 바뀝니다. */ }
+  redraw();
+}
 
 function paint(element, css) {
   if (element.style) Object.assign(element.style, css);
@@ -30,10 +70,15 @@ function node(tag, text, className) {
 const asText = (value) => (typeof value === 'string' ? value : value == null ? '' : String(value));
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
+// 보조 문장(제공 CSS 의 muted 색은 다크 바탕에서 흐려서 직접 색을 정합니다).
+function mutedNote(text) {
+  return paint(node('p', text, 'muted'), { color: palette().muted, lineHeight: '1.5' });
+}
+
 // 색은 보조일 뿐이고, 상태는 항상 글자로도 적습니다.
 function badge(text, tone, big = false) {
   return paint(node('span', text), {
-    ...TONES[tone],
+    ...palette().tones[tone],
     display: 'inline-block',
     padding: big ? '6px 14px' : '2px 10px',
     borderRadius: '999px',
@@ -45,7 +90,7 @@ function badge(text, tone, big = false) {
 
 function box(text, tone, className) {
   return paint(node('p', text, className), {
-    ...TONES[tone],
+    ...palette().tones[tone],
     padding: '10px 14px',
     borderRadius: '8px',
     margin: '6px 0',
@@ -55,17 +100,19 @@ function box(text, tone, className) {
 }
 
 function card() {
+  const p = palette();
   return paint(node('section'), {
     padding: '12px 16px',
     margin: '10px 0',
-    border: '1px solid #cfd6e2',
+    border: `1px solid ${p.cardLine}`,
     borderRadius: '10px',
-    background: '#ffffff',
+    background: p.cardBg,
+    color: p.text,
   });
 }
 
 function cardTitle(text) {
-  return paint(node('h3', text), { margin: '0 0 8px', fontSize: '1.05rem', fontWeight: '800' });
+  return paint(node('h3', text), { margin: '0 0 8px', fontSize: '1.05rem', fontWeight: '800', color: palette().text });
 }
 
 // ---- 13단계: 로그인 사용자·기기·세션 표시 ----
@@ -94,7 +141,7 @@ function stateLine(labels, value) {
 
 // 제공 UI 의 목록 모양(dl.kv 아래 dt·dd 가 바로 이어짐)과 같게 만듭니다.
 function joined(parts) {
-  const holder = node('span');
+  const holder = paint(node('span'), { color: palette().text });
   parts.forEach((part, index) => {
     if (index > 0) holder.append(' · ');
     holder.append(part);
@@ -103,9 +150,9 @@ function joined(parts) {
 }
 
 function addRow(list, term, ...parts) {
-  const detail = node('dd');
+  const detail = paint(node('dd'), { color: palette().text });
   detail.append(joined(parts));
-  list.append(paint(node('dt', term), { fontWeight: '700' }), detail);
+  list.append(paint(node('dt', term), { fontWeight: '700', color: palette().muted }), detail);
 }
 
 function drawMe(data) {
@@ -123,9 +170,9 @@ function drawMe(data) {
 function drawList(items, emptyText, describe) {
   if (!Array.isArray(items)) return box('확인 불가: 응답 형식이 맞지 않습니다.', 'bad', 'state state-error');
   if (items.length === 0) return box(emptyText, 'neutral', 'state state-empty');
-  const list = paint(node('ul', undefined, 'plain-list'), { margin: '0', paddingLeft: '18px', lineHeight: '1.9' });
+  const list = paint(node('ul', undefined, 'plain-list'), { margin: '0', paddingLeft: '18px', lineHeight: '1.9', color: palette().text });
   for (const item of items) {
-    const entry = node('li');
+    const entry = paint(node('li'), { color: palette().text });
     if (!isRecord(item)) {
       entry.textContent = '확인 불가: 항목 형식이 맞지 않습니다.';
     } else {
@@ -161,7 +208,7 @@ function drawResource(title, resource, draw) {
   } else if (res.status === 'error') {
     const message = asText(isRecord(res.error) ? res.error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
     section.append(box(`연결 실패: ${message}`, 'bad', 'state state-error'));
-    section.append(node('p', '확인할 수 없습니다. 이전에 보이던 값은 현재 값이 아니므로 표시하지 않습니다.', 'muted'));
+    section.append(mutedNote('확인할 수 없습니다. 이전에 보이던 값은 현재 값이 아니므로 표시하지 않습니다.'));
   } else if (res.status === 'ok') {
     section.append(draw(res.data));
   } else {
@@ -170,18 +217,40 @@ function drawResource(title, resource, draw) {
   return section;
 }
 
+// 배너: 현재 차수·단계, 보안 Agent 이름, 라이트·다크 선택 버튼.
 function stageBanner() {
+  const p = palette();
   const banner = paint(node('div'), {
-    background: '#1f2a44',
-    color: '#ffffff',
+    background: p.bannerBg,
+    color: p.bannerText,
     padding: '12px 16px',
     borderRadius: '10px',
     lineHeight: '1.5',
+    display: 'flex',
+    gap: '12px',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    border: `1px solid ${p.cardLine}`,
   });
-  banner.append(
+  const titles = node('div');
+  titles.append(
     paint(node('div', STAGE_LABEL), { fontSize: '0.9rem', opacity: '0.85', fontWeight: '600' }),
     paint(node('div', AGENT_NAME), { fontSize: '1.2rem', fontWeight: '800' }),
   );
+  const toggle = paint(node('button', theme === 'dark' ? '라이트 모드로 보기' : '다크 모드로 보기'), {
+    background: 'transparent',
+    color: p.bannerText,
+    border: '1px solid rgba(255, 255, 255, 0.7)',
+    borderRadius: '8px',
+    padding: '6px 12px',
+    fontWeight: '700',
+    cursor: 'pointer',
+  });
+  toggle.type = 'button';
+  toggle.setAttribute('aria-pressed', String(theme === 'dark'));
+  toggle.addEventListener('click', toggleTheme);
+  banner.append(titles, toggle);
   return banner;
 }
 
@@ -219,9 +288,9 @@ function drawDecision(data, fallbackAppId) {
   const headline = paint(node('p', undefined, `decision decision-${shownCode}`), { margin: '6px 0' });
   headline.dataset.studentDecision = shownCode;
   headline.append(badge(`${view.label} (${shownCode})`, view.tone, true));
-  const parts = [headline, paint(node('p', view.note), { fontWeight: '600', lineHeight: '1.5' })];
+  const parts = [headline, paint(node('p', view.note), { fontWeight: '600', lineHeight: '1.5', color: palette().text })];
   if (!known) {
-    parts.push(node('p', `서버가 알 수 없는 판정값을 보냈습니다: ${code.slice(0, SAFE_DECISION_TEXT_LIMIT) || '(비어 있음)'}`, 'muted'));
+    parts.push(mutedNote(`서버가 알 수 없는 판정값을 보냈습니다: ${code.slice(0, SAFE_DECISION_TEXT_LIMIT) || '(비어 있음)'}`));
   }
   const detail = node('dl', undefined, 'kv');
   addRow(detail, '업무 앱', asText(data.appId) || asText(fallbackAppId) || '확인 불가');
@@ -249,7 +318,7 @@ function renderDecision(input) {
     const failure = box(`요청 실패: ${message}`, 'bad', 'state state-error');
     failure.dataset.studentDecision = 'request-failed';
     root.append(failure);
-    root.append(node('p', '이 결과는 접근 거부 판정이 아닙니다. 요청이 실패해 판정을 확인할 수 없으며, 허용된 것도 아닙니다.', 'muted'));
+    root.append(mutedNote('이 결과는 접근 거부 판정이 아닙니다. 요청이 실패해 판정을 확인할 수 없으며, 허용된 것도 아닙니다.'));
   } else if (status === 'ok') {
     root.append(...drawDecision(data, appText));
   } else {
@@ -258,7 +327,9 @@ function renderDecision(input) {
   return root;
 }
 
-export function createStudentView() {
+export function createStudentView(context) {
+  // 앱이 주는 onChange 를 부르면 학생 표시 함수가 최신 자료로 다시 그려집니다(테마를 바꿀 때 씁니다).
+  redraw = typeof context?.onChange === 'function' ? context.onChange : () => {};
   return {
     renderIdentity,
     renderDecision,

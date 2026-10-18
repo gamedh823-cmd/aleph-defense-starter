@@ -52,7 +52,9 @@ function toggleTheme() {
       globalThis.history.replaceState(null, '', `${globalThis.location.pathname}${globalThis.location.search}#theme=${theme}`);
     }
   } catch { /* 주소를 바꾸지 못해도 이번 화면에서는 바뀝니다. */ }
-  redraw();
+  // 자료는 그대로이고 색만 바뀌는 다시 그리기이므로 15단계 기록의 걸러 보기·상세 선택은 유지합니다(redraw 는 동기 호출입니다).
+  keepEventsViewOnce = true;
+  try { redraw(); } finally { keepEventsViewOnce = false; }
 }
 
 function paint(element, css) {
@@ -337,6 +339,8 @@ const MISSING_APP_TEXT = '앱을 확인할 수 없음 (appId 없음)';
 // 걸러 보기·상세 선택은 같은 자료가 다시 그려질 때만 유지하고, 불러오는 중·실패에서는 지웁니다.
 let eventsView = { kind: 'all', appId: 'all', access: 'all', selectedId: null };
 const resetEventsView = () => { eventsView = { kind: 'all', appId: 'all', access: 'all', selectedId: null }; };
+// 학생 화면의 테마 전환이 일으킨 다시 그리기 한 번만 true 입니다. 새 자료가 오는 경우와 구분하는 표식입니다.
+let keepEventsViewOnce = false;
 
 const kindText = (kind) => {
   const code = asText(kind);
@@ -550,7 +554,11 @@ function renderEvents(input) {
   root.append(cardTitle('내 접속 기록과 XDR 경보'), mutedNote(EVENTS_SCOPE_NOTE));
   const note = modeNote(mode);
   if (note) root.append(note);
-  if (status !== 'ok') resetEventsView(); // 불러오는 중이거나 실패하면 이전 걸러 보기·상세 선택을 지웁니다.
+  // 새 자료(다시 불러오기 결과·불러오는 중·실패)가 오면 이전 걸러 보기와 상세 선택을 항상 지웁니다.
+  // 같은 사건 ID 가 다시 와도 이전 상세는 자동으로 열리지 않습니다. 테마 전환처럼 자료는 그대로인 다시 그리기만 선택을 유지합니다.
+  const sameDataRedraw = keepEventsViewOnce;
+  keepEventsViewOnce = false;
+  if (!sameDataRedraw) resetEventsView();
   if (status === 'loading') {
     root.append(box('기록을 불러오는 중…', 'info', 'state state-loading'));
   } else if (status === 'error') {

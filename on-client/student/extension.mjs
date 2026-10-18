@@ -118,10 +118,75 @@ function renderIdentity(input) {
   return root;
 }
 
+// ---- 14단계: 업무 앱 접근 판정 표시 ----
+// 서버가 돌려준 decision 만 보여 줍니다. 네 값이 아니거나 unknown 이면 허용으로 읽히지 않게 확인 불가로 표시합니다.
+const DECISION_VIEWS = {
+  allow: { label: '접근 허용', note: '정책상 접근이 허용되었습니다. 실제 앱 접속 성공을 보장하지 않습니다.' },
+  deny: { label: '접근 거부', note: '정책상 접근이 거부되었습니다. 허용되지 않았습니다.' },
+  challenge: { label: '추가 인증 또는 확인 필요', note: '추가 인증 또는 확인이 필요합니다. 이 화면은 확인 절차를 대신 수행하지 않으며, 아직 허용되지 않았습니다.' },
+  unknown: { label: '판정 확인 불가', note: '판정을 확인할 수 없습니다. 허용으로 간주하지 마세요.' },
+};
+const SAFE_DECISION_TEXT_LIMIT = 40;
+
+function modeNote(mode) {
+  if (!Object.hasOwn(MODE_LABELS, mode)) return null;
+  return node('p', `${MODE_LABELS[mode]} (${mode})`, mode === 'demo' ? 'tag tag-demo' : 'tag');
+}
+
+function drawDecision(data, fallbackAppId) {
+  if (!isRecord(data)) {
+    return [node('p', '판정 확인 불가 (unknown): 응답 형식이 맞지 않습니다. 허용으로 간주하지 마세요.', 'state state-error')];
+  }
+  const code = asText(data.decision);
+  const known = Object.hasOwn(DECISION_VIEWS, code);
+  const view = DECISION_VIEWS[known ? code : 'unknown'];
+  const shownCode = known ? code : 'unknown';
+  const headline = node('p', undefined, `decision decision-${shownCode}`);
+  headline.dataset.studentDecision = shownCode;
+  headline.append(node('strong', `${view.label} (${shownCode})`));
+  const parts = [headline, node('p', view.note)];
+  if (!known) {
+    parts.push(node('p', `서버가 알 수 없는 판정값을 보냈습니다: ${code.slice(0, SAFE_DECISION_TEXT_LIMIT) || '(비어 있음)'}`, 'muted'));
+  }
+  const detail = node('dl', undefined, 'kv');
+  detail.append(
+    node('dt', '업무 앱'), node('dd', asText(data.appId) || asText(fallbackAppId) || '확인 불가'),
+    node('dt', '판정 이유'), node('dd', asText(data.reason) || '이유 정보 없음'),
+    node('dt', '판정 시각'), node('dd', asText(data.checkedAt) || '시각 정보 없음'),
+  );
+  parts.push(detail);
+  return parts;
+}
+
+function renderDecision(input) {
+  const { status, mode, data, error, appId } = isRecord(input) ? input : {};
+  const root = node('section', undefined, 'student-decision');
+  root.setAttribute('aria-label', '업무 앱 접근 판정');
+  const note = modeNote(mode);
+  if (note) root.append(note);
+  const appText = asText(appId);
+  if (status === 'idle') {
+    root.append(node('p', '앱을 골라 접속을 요청하세요. 아직 요청한 판정이 없습니다.', 'state state-empty'));
+  } else if (status === 'loading') {
+    root.append(node('p', `판정 확인 중${appText ? ` (${appText})` : ''}`, 'state state-loading'));
+  } else if (status === 'error') {
+    const message = asText(isRecord(error) ? error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
+    const failure = node('p', `요청 실패: ${message}`, 'state state-error');
+    failure.dataset.studentDecision = 'request-failed';
+    root.append(failure);
+    root.append(node('p', '이 결과는 접근 거부 판정이 아닙니다. 요청이 실패해 판정을 확인할 수 없으며, 허용된 것도 아닙니다.', 'muted'));
+  } else if (status === 'ok') {
+    root.append(...drawDecision(data, appText));
+  } else {
+    root.append(node('p', '판정 확인 불가 (unknown): 상태를 받지 못했습니다. 허용으로 간주하지 마세요.', 'state state-error'));
+  }
+  return root;
+}
+
 export function createStudentView() {
   return {
     renderIdentity,
-    renderDecision() { return '학생 구현 대기: 서버의 판정과 이유를 연결하세요.'; },
+    renderDecision,
     renderEvents() { return '학생 구현 대기: 본인 접속·XDR 기록을 연결하세요.'; },
     renderStatus() { return '학생 구현 대기: 기기·세션·알림과 연결 점검 상태를 구분하세요.'; },
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },

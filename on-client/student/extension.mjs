@@ -4,7 +4,7 @@
 // ---- 공통: 화면 표기와 보기 좋은 모양 ----
 // 단계가 바뀔 때마다 이 두 줄만 바꿉니다.
 const AGENT_NAME = '등대, 낯선 접속을 가장 먼저 알아보다';
-const STAGE_LABEL = '4차 방어전 · 14단계';
+const STAGE_LABEL = '4차 방어전 · 15단계';
 
 // 제공 CSS 는 건드리지 않고, 학생 칸의 모양은 여기서 요소별로 입힙니다(style-src 'self' 에서도 CSSOM 은 허용).
 // 라이트·다크 두 벌의 색을 두고, 학생 칸 배너의 버튼으로 고릅니다. 선택값은 주소 뒤 #theme=… 에만 둡니다.
@@ -327,13 +327,262 @@ function renderDecision(input) {
   return root;
 }
 
+// ---- 15단계: 내 접속 기록과 XDR 경보 ----
+// 받은 배열을 복사해 최신순으로 보여 주고, 걸러 보기와 상세 보기는 받은 배열 안에서만 합니다. 서버에 다시 묻지 않습니다.
+const KIND_LABELS = { access: '접속 기록', xdr: 'XDR 경보' };
+const ACCESS_LABELS = { allowed: '허용됨', denied: '거부됨', unknown: '확인 불가' };
+const EVENTS_SCOPE_NOTE = '본인의 최근 기록(최대 40건)만 보입니다. 전체 직원의 이력이나 실시간 전체 위협 탐지가 아니며, XDR 경보는 서버가 이미 저장한 경보만 표시합니다.';
+const MISSING_APP_TEXT = '앱을 확인할 수 없음 (appId 없음)';
+
+// 걸러 보기·상세 선택은 같은 자료가 다시 그려질 때만 유지하고, 불러오는 중·실패에서는 지웁니다.
+let eventsView = { kind: 'all', appId: 'all', access: 'all', selectedId: null };
+const resetEventsView = () => { eventsView = { kind: 'all', appId: 'all', access: 'all', selectedId: null }; };
+
+const kindText = (kind) => {
+  const code = asText(kind);
+  return Object.hasOwn(KIND_LABELS, code) ? `${KIND_LABELS[code]} (${code})` : `종류 확인 불가 (${code || 'unknown'})`;
+};
+
+function formatAt(at) {
+  const raw = asText(at);
+  const time = Date.parse(raw);
+  if (!Number.isFinite(time)) return `시각 확인 불가 (원본 ${raw || '없음'})`;
+  const korean = new Date(time).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false });
+  return `${korean} (한국 시각) · 원본 ${raw}`;
+}
+
+// 원본 배열을 바꾸지 않고 at 기준 최신순으로 복사합니다. 시각을 읽을 수 없는 기록은 맨 뒤에 둡니다.
+function sortedEvents(data) {
+  const rows = data.filter(isRecord).map((event, index) => ({ event, index, time: Date.parse(asText(event.at)) }));
+  rows.sort((a, b) => {
+    const aOk = Number.isFinite(a.time);
+    const bOk = Number.isFinite(b.time);
+    if (aOk && bOk && a.time !== b.time) return b.time - a.time;
+    if (aOk !== bOk) return aOk ? -1 : 1;
+    return a.index - b.index;
+  });
+  return rows.map((row) => row.event);
+}
+
+const uniqueValues = (events, pick) => [...new Set(events.map(pick).filter((value) => value !== ''))];
+
+function accessibleButton(text, onClick) {
+  const button = paint(node('button', text), {
+    background: 'transparent',
+    color: palette().text,
+    border: `1px solid ${palette().cardLine}`,
+    borderRadius: '8px',
+    padding: '4px 10px',
+    fontWeight: '700',
+    cursor: 'pointer',
+  });
+  button.type = 'button';
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function listBlock(title, items, describe, emptyText) {
+  const block = node('div');
+  block.append(paint(node('strong', title), { color: palette().text }));
+  if (!Array.isArray(items) || items.length === 0) {
+    block.append(mutedNote(emptyText));
+    return block;
+  }
+  const list = paint(node('ul', undefined, 'plain-list'), { margin: '4px 0 8px', paddingLeft: '18px', color: palette().text });
+  for (const item of items) {
+    const entry = paint(node('li'), { color: palette().text });
+    entry.textContent = isRecord(item) ? describe(item) : '확인 불가: 항목 형식이 맞지 않습니다.';
+    list.append(entry);
+  }
+  block.append(list);
+  return block;
+}
+
+function drawEventDetail(event) {
+  const id = asText(event.id) || '(id 없음)';
+  const detail = paint(node('div'), {
+    marginTop: '10px',
+    padding: '10px 12px',
+    borderRadius: '8px',
+    border: `1px solid ${palette().cardLine}`,
+    background: theme === 'dark' ? '#0f1a2e' : '#f6f8fb',
+    color: palette().text,
+  });
+  detail.dataset.studentEventDetail = id;
+  const state = isRecord(event.state) ? event.state : {};
+  const facts = node('dl', undefined, 'kv');
+  addRow(facts, '사건 ID', id);
+  addRow(facts, '업무 앱', asText(event.appId) || MISSING_APP_TEXT);
+  addRow(facts, '접속 상태', stateLineWith(ACCESS_LABELS, state.access, { allowed: 'ok', denied: 'bad' }));
+  addRow(facts, '세션 상태', stateLine(SESSION_LABELS, state.session));
+  addRow(facts, '기기 상태', stateLine(DEVICE_LABELS, state.device));
+  detail.append(
+    facts,
+    listBlock('근거', event.evidence, (item) => `${asText(item.id) || '(id 없음)'}: ${asText(item.text) || '내용 없음'}`, '근거 정보가 없습니다.'),
+    listBlock('적용된 규칙', event.rules, (item) => `${asText(item.id) || '(id 없음)'}: ${asText(item.text) || '내용 없음'}`, '규칙 정보가 없습니다.'),
+  );
+  return detail;
+}
+
+// 접속 상태처럼 값마다 색을 정하는 배지(글자로도 뜻과 원래 값을 함께 적습니다).
+function stateLineWith(labels, value, tones) {
+  const code = asText(value);
+  const line = badge(`${Object.hasOwn(labels, code) && code !== 'unknown' ? '' : '주의: '}${stateText(labels, value)}`, tones[code] ?? 'warn');
+  line.dataset.studentState = code || 'unknown';
+  return line;
+}
+
+function drawEventRow(event, onToggle) {
+  const id = asText(event.id) || '(id 없음)';
+  const state = isRecord(event.state) ? event.state : {};
+  const row = paint(node('li'), {
+    display: 'block', // 제공 CSS 의 .plain-list li(가로 배치)를 쓰지 않습니다.
+    listStyle: 'none',
+    margin: '8px 0',
+    padding: '10px 12px',
+    border: `1px solid ${palette().cardLine}`,
+    borderRadius: '10px',
+    color: palette().text,
+  });
+  row.dataset.studentEventId = id;
+  const head = paint(node('div'), { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' });
+  head.append(
+    paint(node('strong', id), { fontSize: '1.02rem' }),
+    badge(kindText(event.kind), event.kind === 'xdr' ? 'warn' : 'info'),
+    stateLineWith(ACCESS_LABELS, state.access, { allowed: 'ok', denied: 'bad' }),
+  );
+  const facts = node('dl', undefined, 'kv');
+  addRow(facts, '시각', formatAt(event.at));
+  addRow(facts, '업무 앱', asText(event.appId) || MISSING_APP_TEXT);
+  addRow(facts, '요약', asText(event.summary) || '요약 없음');
+  const expanded = eventsView.selectedId === id;
+  const toggle = accessibleButton(`${id} 상세`, () => onToggle(id));
+  toggle.dataset.studentDetailButton = id;
+  toggle.setAttribute('aria-expanded', String(expanded));
+  row.append(head, facts, toggle);
+  if (expanded) row.append(drawEventDetail(event));
+  return row;
+}
+
+function filterSelect(labelText, key, options, onChange) {
+  const wrap = paint(node('div'), { display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '150px' });
+  const id = `student-events-filter-${key}`;
+  const label = paint(node('label', labelText), { fontWeight: '700', color: palette().text });
+  label.htmlFor = id;
+  const select = paint(node('select'), {
+    background: palette().cardBg,
+    color: palette().text,
+    border: `1px solid ${palette().cardLine}`,
+    borderRadius: '8px',
+    padding: '6px 8px',
+  });
+  select.id = id;
+  for (const [value, text] of [['all', '전체 (all)'], ...options]) {
+    const option = node('option', text);
+    option.value = value;
+    select.append(option);
+  }
+  select.value = eventsView[key];
+  select.addEventListener('change', () => onChange(key, select.value));
+  wrap.append(label, select);
+  return wrap;
+}
+
+function drawEventsBody(root, data) {
+  const events = sortedEvents(data);
+  const kinds = uniqueValues(events, (e) => asText(e.kind));
+  const apps = uniqueValues(events, (e) => asText(e.appId));
+  const accesses = uniqueValues(events, (e) => asText(isRecord(e.state) ? e.state.access : ''));
+  // 이전에 고른 값이 새 자료에 없으면 전체로 돌립니다.
+  if (eventsView.kind !== 'all' && !kinds.includes(eventsView.kind)) eventsView.kind = 'all';
+  if (eventsView.appId !== 'all' && !apps.includes(eventsView.appId)) eventsView.appId = 'all';
+  if (eventsView.access !== 'all' && !accesses.includes(eventsView.access)) eventsView.access = 'all';
+  if (eventsView.selectedId !== null && !events.some((e) => (asText(e.id) || '(id 없음)') === eventsView.selectedId)) eventsView.selectedId = null;
+
+  const filters = paint(node('div'), { display: 'flex', gap: '12px', flexWrap: 'wrap', margin: '8px 0' });
+  const count = paint(node('p'), { fontWeight: '700', margin: '6px 0', color: palette().text });
+  const host = paint(node('ul'), { margin: '0', padding: '0', listStyle: 'none' });
+
+  const refresh = () => {
+    const visible = events.filter((event) => {
+      const state = isRecord(event.state) ? event.state : {};
+      return (eventsView.kind === 'all' || asText(event.kind) === eventsView.kind)
+        && (eventsView.appId === 'all' || asText(event.appId) === eventsView.appId)
+        && (eventsView.access === 'all' || asText(state.access) === eventsView.access);
+    });
+    count.textContent = `표시 ${visible.length}건 / 받은 기록 ${events.length}건`;
+    host.textContent = '';
+    if (visible.length === 0) {
+      host.append(box('선택한 조건에 맞는 기록이 없습니다. 필터를 「전체」로 바꿔 보세요.', 'neutral', 'state state-empty'));
+      return;
+    }
+    for (const event of visible) host.append(drawEventRow(event, toggleDetail));
+  };
+
+  function toggleDetail(id) {
+    eventsView.selectedId = eventsView.selectedId === id ? null : id;
+    refresh();
+    // 목록을 다시 그려도 키보드 사용자가 같은 버튼에서 이어서 조작할 수 있게 포커스를 돌려줍니다.
+    if (typeof host.querySelectorAll === 'function') {
+      const again = [...host.querySelectorAll('button')].find((button) => button.dataset.studentDetailButton === id);
+      if (again && typeof again.focus === 'function') again.focus();
+    }
+  }
+
+  const onFilter = (key, value) => {
+    eventsView[key] = value;
+    refresh();
+  };
+  filters.append(
+    filterSelect('기록 종류', 'kind', kinds.map((k) => [k, kindText(k)]), onFilter),
+    filterSelect('업무 앱', 'appId', apps.map((a) => [a, a]), onFilter),
+    filterSelect('접속 상태', 'access', accesses.map((a) => [a, stateText(ACCESS_LABELS, a)]), onFilter),
+  );
+  root.append(filters, count, host);
+  refresh();
+}
+
+function renderEvents(input) {
+  const { status, mode, data, error } = isRecord(input) ? input : {};
+  const root = card();
+  root.className = 'student-events';
+  root.setAttribute('aria-label', '내 접속 기록과 XDR 경보');
+  root.append(cardTitle('내 접속 기록과 XDR 경보'), mutedNote(EVENTS_SCOPE_NOTE));
+  const note = modeNote(mode);
+  if (note) root.append(note);
+  if (status !== 'ok') resetEventsView(); // 불러오는 중이거나 실패하면 이전 걸러 보기·상세 선택을 지웁니다.
+  if (status === 'loading') {
+    root.append(box('기록을 불러오는 중…', 'info', 'state state-loading'));
+  } else if (status === 'error') {
+    const message = asText(isRecord(error) ? error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
+    const code = asText(isRecord(error) ? error.code : '');
+    root.append(box(`기록을 불러오지 못했습니다: ${message}`, 'bad', 'state state-error'));
+    const unverified = code === 'CONTRACT_MISMATCH' || code === 'ENGINE_RESULT_UNVERIFIED';
+    root.append(mutedNote(unverified
+      ? '서버 응답 형식이 맞지 않아 확인 불가(unknown)입니다. 이전에 보이던 목록은 지웠고, 기록이 없다는 뜻도 아닙니다.'
+      : '이 화면은 기록이 없는 경우가 아니라 불러오기에 실패한 경우입니다. 이전에 보이던 목록은 현재 결과가 아니므로 표시하지 않습니다.'));
+  } else if (status === 'ok' && Array.isArray(data)) {
+    if (data.length === 0) {
+      root.append(box('표시할 기록이 없습니다.', 'neutral', 'state state-empty'));
+      root.append(mutedNote('불러오기는 성공했고 조회 범위 안에 기록이 없습니다. 실패가 아닙니다.'));
+    } else {
+      drawEventsBody(root, data);
+    }
+  } else if (status === 'ok') {
+    root.append(box('확인 불가: 응답 형식이 맞지 않아 기록을 표시하지 않습니다.', 'bad', 'state state-error'));
+  } else {
+    root.append(box('확인 불가: 상태를 받지 못했습니다.', 'bad', 'state state-error'));
+  }
+  return root;
+}
+
 export function createStudentView(context) {
   // 앱이 주는 onChange 를 부르면 학생 표시 함수가 최신 자료로 다시 그려집니다(테마를 바꿀 때 씁니다).
   redraw = typeof context?.onChange === 'function' ? context.onChange : () => {};
   return {
     renderIdentity,
     renderDecision,
-    renderEvents() { return '학생 구현 대기: 본인 접속·XDR 기록을 연결하세요.'; },
+    renderEvents,
     renderStatus() { return '학생 구현 대기: 기기·세션·알림과 연결 점검 상태를 구분하세요.'; },
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
     renderAiConnection() { return '학생 구현 대기: 모델 응답 점검과 실제 사건 설명을 구분하고 AI 오류·취소·수동 복구를 안내하세요.'; },

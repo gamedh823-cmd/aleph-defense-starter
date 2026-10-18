@@ -6,34 +6,48 @@
   <title>BYTE BACK | 4차 14단계 · 탈환 작전실</title>
   <meta name="theme-color" content="#101a28">
   <link rel="manifest" href="/manifest.webmanifest">
+  <script src="/theme.js"></script>
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
-    body { margin: 0; min-height: 100vh; background: #101a28; color: #ecf4ff; }
+    :root { color-scheme: dark; font-family: system-ui, sans-serif;
+      --bg: #101a28; --fg: #ecf4ff; --accent: #8ad8df; --muted: #bfd0e5;
+      --danger-line: #d07384; --danger-fg: #ffe3e8; --danger-bg: #612a3544;
+      --field: #0c1520; --line: #51667c; --line2: #2d4057; --card: #1a2a3d;
+      --warn: #ffd28a; --warn-fg: #ffe9c2; --warn-bg: #5c431544;
+      --tag-server-bg: #1d4b3a; --tag-server-fg: #9be8c5; --tag-code-bg: #2b3f63; --tag-code-fg: #b9d0ff; --tag-none-bg: #5c4315; }
+    :root[data-theme="light"] { color-scheme: light;
+      --bg: #f4f7fb; --fg: #14202e; --accent: #0a6f78; --muted: #3b4d63;
+      --danger-line: #c2415a; --danger-fg: #7a1a2b; --danger-bg: #fde8ec;
+      --field: #ffffff; --line: #b8c4d3; --line2: #d6deea; --card: #ffffff;
+      --warn: #8a5a00; --warn-fg: #6b4500; --warn-bg: #fff3d6;
+      --tag-server-bg: #d8f3e6; --tag-server-fg: #0d5a3d; --tag-code-bg: #dfe8ff; --tag-code-fg: #1f3f8f; --tag-none-bg: #fff0cf; }
+    .topbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    .theme-toggle { padding: 6px 12px; font-size: 14px; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg); }
     main { max-width: 860px; margin: 0 auto; padding: 36px 22px 64px; }
-    .eyebrow { color: #8ad8df; font-size: 14px; font-weight: 700; letter-spacing: .08em; }
+    .eyebrow { color: var(--accent); font-size: 14px; font-weight: 700; letter-spacing: .08em; }
     h1 { margin: 14px 0; font-size: clamp(28px, 6vw, 42px); }
     h2 { margin: 0 0 10px; font-size: 18px; }
-    p, li, td, th { font-size: 15px; line-height: 1.6; color: #bfd0e5; }
-    .notice { margin: 18px 0; padding: 14px 16px; border: 1px solid #d07384; border-radius: 12px; color: #ffe3e8; background: #612a3544; }
-    section.card { margin: 16px 0; padding: 16px 18px; border: 1px solid #51667c; border-radius: 14px; background: #1a2a3d; }
+    p, li, td, th { font-size: 15px; line-height: 1.6; color: var(--muted); }
+    .notice { margin: 18px 0; padding: 14px 16px; border: 1px solid var(--danger-line); border-radius: 12px; color: var(--danger-fg); background: var(--danger-bg); }
+    section.card { margin: 16px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
     table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #2d4057; vertical-align: top; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line2); vertical-align: top; }
     .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-    .tag.server { background: #1d4b3a; color: #9be8c5; }
-    .tag.code { background: #2b3f63; color: #b9d0ff; }
-    .tag.none { background: #5c4315; color: #ffd28a; }
+    .tag.server { background: var(--tag-server-bg); color: var(--tag-server-fg); }
+    .tag.code { background: var(--tag-code-bg); color: var(--tag-code-fg); }
+    .tag.none { background: var(--tag-none-bg); color: var(--warn); }
     form { display: grid; gap: 10px; margin: 18px 0; max-width: 380px; }
-    input { padding: 10px 12px; border: 1px solid #51667c; border-radius: 10px; background: #0c1520; color: #ecf4ff; font: inherit; }
-    button { padding: 10px 16px; border: 1px solid #8ad8df; border-radius: 10px; background: #1a2a3d; color: #ecf4ff; font: inherit; font-weight: 700; cursor: pointer; }
-    .status { min-height: 1.5em; color: #ffd28a; }
-    a { color: #8ad8df; }
+    input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--field); color: var(--fg); font: inherit; }
+    button { padding: 10px 16px; border: 1px solid var(--accent); border-radius: 10px; background: var(--card); color: var(--fg); font: inherit; font-weight: 700; cursor: pointer; }
+    .status { min-height: 1.5em; color: var(--warn); }
+    a { color: var(--accent); }
     [hidden] { display: none !important; }
   </style>
 </head>
 <body>
   <main>
-    <div class="eyebrow">4차 방어전 · 14단계 - 등대</div>
+    <div class="topbar"><div class="eyebrow">4차 방어전 · 14단계 - 등대</div><button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="true">라이트 모드로 보기</button></div>
     <h1>탈환 작전실</h1>
     <div class="notice">이 화면의 숫자는 로그인한 본인의 서버 기록(<span class="tag server">서버 기록</span>)과 코드에서 읽은 값(<span class="tag code">코드</span>)입니다. 확인하지 못한 항목은 <span class="tag none">미실행</span>으로 표시합니다. 화면의 문구는 통과 근거가 아니며, 메모 제목·본문·토큰은 표시하지 않습니다. 로그인 정보는 이 화면의 메모리에만 있어 새로고침하면 다시 로그인해야 합니다.</div>
     <div id="status" class="status" role="status" aria-live="polite"></div>

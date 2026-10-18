@@ -1,12 +1,24 @@
 // 이 파일은 학생이 같은 프로젝트에서 이어서 구현합니다.
 // 제공 UI를 받은 것만으로 단계 완료를 인정하지 않습니다.
 
-// ---- 13단계: 로그인 사용자·기기·세션 표시 ----
-// 상태값은 API 계약 그대로 두고, 화면 문구만 한국어로 바꿉니다.
-const DEVICE_LABELS = { compliant: '보안 기준 충족', noncompliant: '보안 기준 미충족', unknown: '확인 불가' };
-const SESSION_LABELS = { active: '활성', expired: '만료', revoked: '철회됨', unknown: '확인 불가' };
-const MODE_LABELS = { demo: '예제 자료', disconnected: '연결 없음', unknown: '확인 불가' };
-const NORMAL_STATES = new Set(['compliant', 'active']); // 그 밖의 값은 정상처럼 보이지 않게 합니다.
+// ---- 공통: 화면 표기와 보기 좋은 모양 ----
+// 단계가 바뀔 때마다 이 두 줄만 바꿉니다.
+const AGENT_NAME = '등대, 낯선 접속을 가장 먼저 알아보다';
+const STAGE_LABEL = '4차 방어전 · 14단계';
+
+// 제공 CSS 는 건드리지 않고, 학생 칸의 모양은 여기서 요소별로 입힙니다(style-src 'self' 에서도 CSSOM 은 허용).
+const TONES = {
+  ok: { background: '#e7f6ec', color: '#0b5d2a', border: '1px solid #78c490' },
+  warn: { background: '#fff3df', color: '#8a4b00', border: '1px solid #efb359' },
+  bad: { background: '#fde8e8', color: '#9f1212', border: '1px solid #e58a8a' },
+  info: { background: '#e8f0fe', color: '#1a3f8f', border: '1px solid #8fb0f2' },
+  neutral: { background: '#eef1f5', color: '#2f3744', border: '1px solid #b7c0cc' },
+};
+
+function paint(element, css) {
+  if (element.style) Object.assign(element.style, css);
+  return element;
+}
 
 function node(tag, text, className) {
   const element = document.createElement(tag);
@@ -18,6 +30,53 @@ function node(tag, text, className) {
 const asText = (value) => (typeof value === 'string' ? value : value == null ? '' : String(value));
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
+// 색은 보조일 뿐이고, 상태는 항상 글자로도 적습니다.
+function badge(text, tone, big = false) {
+  return paint(node('span', text), {
+    ...TONES[tone],
+    display: 'inline-block',
+    padding: big ? '6px 14px' : '2px 10px',
+    borderRadius: '999px',
+    fontWeight: '700',
+    fontSize: big ? '1.15rem' : '0.95rem',
+    lineHeight: '1.5',
+  });
+}
+
+function box(text, tone, className) {
+  return paint(node('p', text, className), {
+    ...TONES[tone],
+    padding: '10px 14px',
+    borderRadius: '8px',
+    margin: '6px 0',
+    fontWeight: '600',
+    lineHeight: '1.5',
+  });
+}
+
+function card() {
+  return paint(node('section'), {
+    padding: '12px 16px',
+    margin: '10px 0',
+    border: '1px solid #cfd6e2',
+    borderRadius: '10px',
+    background: '#ffffff',
+  });
+}
+
+function cardTitle(text) {
+  return paint(node('h3', text), { margin: '0 0 8px', fontSize: '1.05rem', fontWeight: '800' });
+}
+
+// ---- 13단계: 로그인 사용자·기기·세션 표시 ----
+// 상태값은 API 계약 그대로 두고, 화면 문구만 한국어로 바꿉니다.
+const DEVICE_LABELS = { compliant: '보안 기준 충족', noncompliant: '보안 기준 미충족', unknown: '확인 불가' };
+const SESSION_LABELS = { active: '활성', expired: '만료', revoked: '철회됨', unknown: '확인 불가' };
+const MODE_LABELS = { demo: '예제 자료', disconnected: '연결 없음', unknown: '확인 불가' };
+const MODE_TONES = { demo: 'warn', disconnected: 'bad', unknown: 'neutral' };
+const NORMAL_STATES = new Set(['compliant', 'active']); // 그 밖의 값은 정상처럼 보이지 않게 합니다.
+const BAD_STATES = new Set(['noncompliant', 'expired', 'revoked']);
+
 // 한국어 뜻과 원래 상태값을 함께 적습니다. 목록에 없는 값은 확인 불가로 읽습니다.
 function stateText(labels, value) {
   const code = asText(value);
@@ -27,9 +86,9 @@ function stateText(labels, value) {
 // 정상이 아니거나 확인할 수 없는 상태에는 색이 아니라 글자로 "주의"를 붙입니다.
 function stateLine(labels, value) {
   const code = asText(value);
-  const line = node('span', undefined, NORMAL_STATES.has(code) ? 'student-state-ok' : 'student-state-warn');
+  const tone = NORMAL_STATES.has(code) ? 'ok' : BAD_STATES.has(code) ? 'bad' : 'warn';
+  const line = badge(`${NORMAL_STATES.has(code) ? '' : '주의: '}${stateText(labels, value)}`, tone);
   line.dataset.studentState = code || 'unknown';
-  line.textContent = `${NORMAL_STATES.has(code) ? '' : '주의: '}${stateText(labels, value)}`;
   return line;
 }
 
@@ -46,25 +105,25 @@ function joined(parts) {
 function addRow(list, term, ...parts) {
   const detail = node('dd');
   detail.append(joined(parts));
-  list.append(node('dt', term), detail);
+  list.append(paint(node('dt', term), { fontWeight: '700' }), detail);
 }
 
 function drawMe(data) {
   if (!isRecord(data) || !isRecord(data.user) || !isRecord(data.device) || !isRecord(data.session)) {
-    return node('p', '확인 불가: 응답 형식이 맞지 않아 사용자·기기·세션을 표시하지 않습니다.', 'state state-error');
+    return box('확인 불가: 응답 형식이 맞지 않아 사용자·기기·세션을 표시하지 않습니다.', 'bad', 'state state-error');
   }
   const { user, device, session } = data;
   const list = node('dl', undefined, 'kv');
-  addRow(list, '사용자', asText(user.label) || asText(user.id) || '확인 불가', `ID ${asText(user.id)}`);
+  addRow(list, '사용자', paint(node('strong', asText(user.label) || asText(user.id) || '확인 불가'), { fontSize: '1.1rem' }), `ID ${asText(user.id)}`);
   addRow(list, '현재 기기', asText(device.label) || asText(device.id) || '확인 불가', stateLine(DEVICE_LABELS, device.status), `ID ${asText(device.id)}`);
   addRow(list, '현재 세션', `ID ${asText(session.id)}`, stateLine(SESSION_LABELS, session.status));
   return list;
 }
 
 function drawList(items, emptyText, describe) {
-  if (!Array.isArray(items)) return node('p', '확인 불가: 응답 형식이 맞지 않습니다.', 'state state-error');
-  if (items.length === 0) return node('p', emptyText, 'state state-empty');
-  const list = node('ul', undefined, 'plain-list');
+  if (!Array.isArray(items)) return box('확인 불가: 응답 형식이 맞지 않습니다.', 'bad', 'state state-error');
+  if (items.length === 0) return box(emptyText, 'neutral', 'state state-empty');
+  const list = paint(node('ul', undefined, 'plain-list'), { margin: '0', paddingLeft: '18px', lineHeight: '1.9' });
   for (const item of items) {
     const entry = node('li');
     if (!isRecord(item)) {
@@ -85,25 +144,45 @@ const drawSessions = (data) => drawList(data, '표시할 세션이 없습니다.
   entry.append(joined([`ID ${asText(session.id)}`, stateLine(SESSION_LABELS, session.status)]));
 });
 
+function modeNote(mode) {
+  if (!Object.hasOwn(MODE_LABELS, mode)) return null;
+  return paint(badge(`${MODE_LABELS[mode]} (${mode})`, MODE_TONES[mode]), { marginBottom: '8px' });
+}
+
 // 자료 하나(me·devices·sessions)의 loading / ok / error 를 각각 처리합니다. 매번 새 DOM 을 만들어 돌려줍니다.
 function drawResource(title, resource, draw) {
-  const section = node('section');
-  section.append(node('h3', title));
+  const section = card();
+  section.append(cardTitle(title));
   const res = isRecord(resource) ? resource : {};
-  const modeText = Object.hasOwn(MODE_LABELS, res.mode) ? MODE_LABELS[res.mode] : '';
-  if (modeText) section.append(node('p', `${modeText} (${res.mode})`, res.mode === 'demo' ? 'tag tag-demo' : 'tag'));
+  const note = modeNote(res.mode);
+  if (note) section.append(note);
   if (res.status === 'loading') {
-    section.append(node('p', '불러오는 중…', 'state state-loading'));
+    section.append(box('불러오는 중…', 'info', 'state state-loading'));
   } else if (res.status === 'error') {
     const message = asText(isRecord(res.error) ? res.error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
-    section.append(node('p', `연결 실패: ${message}`, 'state state-error'));
+    section.append(box(`연결 실패: ${message}`, 'bad', 'state state-error'));
     section.append(node('p', '확인할 수 없습니다. 이전에 보이던 값은 현재 값이 아니므로 표시하지 않습니다.', 'muted'));
   } else if (res.status === 'ok') {
     section.append(draw(res.data));
   } else {
-    section.append(node('p', '확인 불가: 상태를 받지 못했습니다.', 'state state-error'));
+    section.append(box('확인 불가: 상태를 받지 못했습니다.', 'bad', 'state state-error'));
   }
   return section;
+}
+
+function stageBanner() {
+  const banner = paint(node('div'), {
+    background: '#1f2a44',
+    color: '#ffffff',
+    padding: '12px 16px',
+    borderRadius: '10px',
+    lineHeight: '1.5',
+  });
+  banner.append(
+    paint(node('div', STAGE_LABEL), { fontSize: '0.9rem', opacity: '0.85', fontWeight: '600' }),
+    paint(node('div', AGENT_NAME), { fontSize: '1.2rem', fontWeight: '800' }),
+  );
+  return banner;
 }
 
 function renderIdentity(input) {
@@ -111,6 +190,7 @@ function renderIdentity(input) {
   const root = node('section', undefined, 'student-identity');
   root.setAttribute('aria-label', '로그인 사용자·기기·세션');
   root.append(
+    stageBanner(),
     drawResource('현재 로그인', me, drawMe),
     drawResource('내 기기 목록', devices, drawDevices),
     drawResource('세션 목록', sessions, drawSessions),
@@ -121,64 +201,59 @@ function renderIdentity(input) {
 // ---- 14단계: 업무 앱 접근 판정 표시 ----
 // 서버가 돌려준 decision 만 보여 줍니다. 네 값이 아니거나 unknown 이면 허용으로 읽히지 않게 확인 불가로 표시합니다.
 const DECISION_VIEWS = {
-  allow: { label: '접근 허용', note: '정책상 접근이 허용되었습니다. 실제 앱 접속 성공을 보장하지 않습니다.' },
-  deny: { label: '접근 거부', note: '정책상 접근이 거부되었습니다. 허용되지 않았습니다.' },
-  challenge: { label: '추가 인증 또는 확인 필요', note: '추가 인증 또는 확인이 필요합니다. 이 화면은 확인 절차를 대신 수행하지 않으며, 아직 허용되지 않았습니다.' },
-  unknown: { label: '판정 확인 불가', note: '판정을 확인할 수 없습니다. 허용으로 간주하지 마세요.' },
+  allow: { label: '접근 허용', tone: 'ok', note: '정책상 접근이 허용되었습니다. 실제 앱 접속 성공을 보장하지 않습니다.' },
+  deny: { label: '접근 거부', tone: 'bad', note: '정책상 접근이 거부되었습니다. 허용되지 않았습니다.' },
+  challenge: { label: '추가 인증 또는 확인 필요', tone: 'warn', note: '추가 인증 또는 확인이 필요합니다. 이 화면은 확인 절차를 대신 수행하지 않으며, 아직 허용되지 않았습니다.' },
+  unknown: { label: '판정 확인 불가', tone: 'neutral', note: '판정을 확인할 수 없습니다. 허용으로 간주하지 마세요.' },
 };
 const SAFE_DECISION_TEXT_LIMIT = 40;
 
-function modeNote(mode) {
-  if (!Object.hasOwn(MODE_LABELS, mode)) return null;
-  return node('p', `${MODE_LABELS[mode]} (${mode})`, mode === 'demo' ? 'tag tag-demo' : 'tag');
-}
-
 function drawDecision(data, fallbackAppId) {
   if (!isRecord(data)) {
-    return [node('p', '판정 확인 불가 (unknown): 응답 형식이 맞지 않습니다. 허용으로 간주하지 마세요.', 'state state-error')];
+    return [box('판정 확인 불가 (unknown): 응답 형식이 맞지 않습니다. 허용으로 간주하지 마세요.', 'bad', 'state state-error')];
   }
   const code = asText(data.decision);
   const known = Object.hasOwn(DECISION_VIEWS, code);
   const view = DECISION_VIEWS[known ? code : 'unknown'];
   const shownCode = known ? code : 'unknown';
-  const headline = node('p', undefined, `decision decision-${shownCode}`);
+  const headline = paint(node('p', undefined, `decision decision-${shownCode}`), { margin: '6px 0' });
   headline.dataset.studentDecision = shownCode;
-  headline.append(node('strong', `${view.label} (${shownCode})`));
-  const parts = [headline, node('p', view.note)];
+  headline.append(badge(`${view.label} (${shownCode})`, view.tone, true));
+  const parts = [headline, paint(node('p', view.note), { fontWeight: '600', lineHeight: '1.5' })];
   if (!known) {
     parts.push(node('p', `서버가 알 수 없는 판정값을 보냈습니다: ${code.slice(0, SAFE_DECISION_TEXT_LIMIT) || '(비어 있음)'}`, 'muted'));
   }
   const detail = node('dl', undefined, 'kv');
-  detail.append(
-    node('dt', '업무 앱'), node('dd', asText(data.appId) || asText(fallbackAppId) || '확인 불가'),
-    node('dt', '판정 이유'), node('dd', asText(data.reason) || '이유 정보 없음'),
-    node('dt', '판정 시각'), node('dd', asText(data.checkedAt) || '시각 정보 없음'),
-  );
+  addRow(detail, '업무 앱', asText(data.appId) || asText(fallbackAppId) || '확인 불가');
+  addRow(detail, '판정 이유', asText(data.reason) || '이유 정보 없음');
+  addRow(detail, '판정 시각', asText(data.checkedAt) || '시각 정보 없음');
   parts.push(detail);
   return parts;
 }
 
 function renderDecision(input) {
   const { status, mode, data, error, appId } = isRecord(input) ? input : {};
-  const root = node('section', undefined, 'student-decision');
+  const root = card();
+  root.className = 'student-decision';
   root.setAttribute('aria-label', '업무 앱 접근 판정');
+  root.append(cardTitle('업무 앱 접근 판정'));
   const note = modeNote(mode);
   if (note) root.append(note);
   const appText = asText(appId);
   if (status === 'idle') {
-    root.append(node('p', '앱을 골라 접속을 요청하세요. 아직 요청한 판정이 없습니다.', 'state state-empty'));
+    root.append(box('앱을 골라 접속을 요청하세요. 아직 요청한 판정이 없습니다.', 'neutral', 'state state-empty'));
   } else if (status === 'loading') {
-    root.append(node('p', `판정 확인 중${appText ? ` (${appText})` : ''}`, 'state state-loading'));
+    root.append(box(`판정 확인 중${appText ? ` (${appText})` : ''}`, 'info', 'state state-loading'));
   } else if (status === 'error') {
     const message = asText(isRecord(error) ? error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
-    const failure = node('p', `요청 실패: ${message}`, 'state state-error');
+    const failure = box(`요청 실패: ${message}`, 'bad', 'state state-error');
     failure.dataset.studentDecision = 'request-failed';
     root.append(failure);
     root.append(node('p', '이 결과는 접근 거부 판정이 아닙니다. 요청이 실패해 판정을 확인할 수 없으며, 허용된 것도 아닙니다.', 'muted'));
   } else if (status === 'ok') {
     root.append(...drawDecision(data, appText));
   } else {
-    root.append(node('p', '판정 확인 불가 (unknown): 상태를 받지 못했습니다. 허용으로 간주하지 마세요.', 'state state-error'));
+    root.append(box('판정 확인 불가 (unknown): 상태를 받지 못했습니다. 허용으로 간주하지 마세요.', 'bad', 'state state-error'));
   }
   return root;
 }

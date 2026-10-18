@@ -4,7 +4,7 @@
 // ---- 공통: 화면 표기와 보기 좋은 모양 ----
 // 단계가 바뀔 때마다 이 두 줄만 바꿉니다.
 const AGENT_NAME = '등대, 낯선 접속을 가장 먼저 알아보다';
-const STAGE_LABEL = '4차 방어전 · 15단계';
+const STAGE_LABEL = '4차 방어전 · 16단계';
 
 // 제공 CSS 는 건드리지 않고, 학생 칸의 모양은 여기서 요소별로 입힙니다(style-src 'self' 에서도 CSSOM 은 허용).
 // 라이트·다크 두 벌의 색을 두고, 학생 칸 배너의 버튼으로 고릅니다. 선택값은 주소 뒤 #theme=… 에만 둡니다.
@@ -335,6 +335,7 @@ const KIND_LABELS = { access: '접속 기록', xdr: 'XDR 경보' };
 const ACCESS_LABELS = { allowed: '허용됨', denied: '거부됨', unknown: '확인 불가' };
 const EVENTS_SCOPE_NOTE = '본인의 최근 기록(최대 40건)만 보입니다. 전체 직원의 이력이나 실시간 전체 위협 탐지가 아니며, XDR 경보는 서버가 이미 저장한 경보만 표시합니다.';
 const MISSING_APP_TEXT = '앱을 확인할 수 없음 (appId 없음)';
+const SAFE_ACTION_ID = /^[A-Za-z0-9_.:-]{1,64}$/u;
 
 // 걸러 보기·상세 선택은 같은 자료가 다시 그려질 때만 유지하고, 불러오는 중·실패에서는 지웁니다.
 let eventsView = { kind: 'all', appId: 'all', access: 'all', selectedId: null };
@@ -425,6 +426,30 @@ function drawEventDetail(event) {
     listBlock('근거', event.evidence, (item) => `${asText(item.id) || '(id 없음)'}: ${asText(item.text) || '내용 없음'}`, '근거 정보가 없습니다.'),
     listBlock('적용된 규칙', event.rules, (item) => `${asText(item.id) || '(id 없음)'}: ${asText(item.text) || '내용 없음'}`, '규칙 정보가 없습니다.'),
   );
+  // 16단계: 자동 확인이 연결되지 않은 조치가 넘어온 경우에만 요청을 보내지 않는 비활성 안내 버튼을 둡니다.
+  // supportedActions 가 비어 있으면(현재 실제 목록) 버튼도 안내도 만들지 않습니다.
+  const actions = Array.isArray(event.supportedActions) ? event.supportedActions.filter((a) => typeof a === 'string' && SAFE_ACTION_ID.test(a)) : [];
+  if (actions.length > 0) {
+    const block = paint(node('div'), { marginTop: '8px' });
+    block.append(paint(node('strong', '조치'), { color: palette().text }));
+    const row = paint(node('div'), { display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '6px 0' });
+    for (const action of actions) {
+      const button = paint(node('button', `${action} 미지원`), {
+        background: 'transparent',
+        color: palette().muted,
+        border: `1px dashed ${palette().cardLine}`,
+        borderRadius: '8px',
+        padding: '4px 10px',
+        fontWeight: '700',
+        cursor: 'not-allowed',
+      });
+      button.type = 'button';
+      button.disabled = true; // 눌러도 아무 요청이 나가지 않습니다(이벤트 처리기도 달지 않습니다).
+      row.append(button);
+    }
+    block.append(row, mutedNote('조치 실행 연결은 준비 중입니다. 아직 지원하지 않는 조치이며, 이 화면은 어떤 요청도 보내지 않습니다.'));
+    detail.append(block);
+  }
   return detail;
 }
 
@@ -584,6 +609,194 @@ function renderEvents(input) {
   return root;
 }
 
+// ---- 16단계: 알림·기기·세션·오류·빈 화면·진단 정보 ----
+// 이 칸은 아무 요청도 보내지 않습니다. 다시 시도는 사용자가 제공 화면의 「다시 불러오기」를 직접 누릅니다(자동 재요청 없음).
+const RESOURCE_LABELS = {
+  me: '로그인 정보', devices: '기기 목록', sessions: '세션', events: '보안 기록', apps: '업무 앱', access: '접속 판정', diagnostics: '연결 점검',
+};
+const TIMEOUT_CODES = new Set(['TIMEOUT', 'REQUEST_TIMEOUT', 'ENGINE_TIMEOUT', 'WB_CLCO_TIMEOUT']);
+const RETRY_GUIDE = '다시 시도는 위쪽 「다시 불러오기」 버튼을 직접 누르세요. 이 화면은 자동으로 다시 요청하지 않으며, 성공하면 이 실패 안내는 사라집니다.';
+const SAFE_CODE = /^[A-Za-z0-9_.:-]{1,64}$/u;
+// 화면과 복사 내용에 비밀값처럼 보이는 문자열이 섞이지 않게 가립니다(키·토큰·비밀번호·개인키).
+const SECRET_LIKE = /(?:Bearer\s+\S+|\bsk-[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:api[_ -]?key|authorization|password|passwd|secret|token|비밀번호|토큰)\s*[:=]\s*\S+)/giu;
+
+function safeText(value, max = 200) {
+  return asText(value).replace(/[\u0000-\u001f\u007f]/gu, ' ').replace(SECRET_LIKE, '[가림]').slice(0, max);
+}
+const safeCode = (value) => (SAFE_CODE.test(asText(value)) ? asText(value) : '(표시할 수 없는 코드)');
+
+// 진단 결과에서 화면과 복사에 쓰는 값은 이 여섯 개뿐입니다. 그 밖의 필드(ai 설정 등)는 읽지도 않습니다.
+function pickDiagnostics(data) {
+  if (!isRecord(data)) return null;
+  const engine = isRecord(data.engine) ? data.engine : {};
+  return [
+    ['requestId', safeText(data.requestId, 80)],
+    ['component', safeText(data.component, 80)],
+    ['version', safeText(data.version, 40)],
+    ['checkedAt', safeText(data.checkedAt, 40)],
+    ['engine.mode', safeText(engine.mode, 40)],
+    ['engine.code', safeText(engine.code, 80)],
+  ].map(([name, value]) => [name, value || '확인 불가']);
+}
+
+function failureBlock(what, resource) {
+  const code = asText(isRecord(resource.error) ? resource.error.code : '');
+  const message = safeText(isRecord(resource.error) ? resource.error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
+  const prefix = TIMEOUT_CODES.has(code) ? '시간 초과: ' : '';
+  const block = node('div');
+  block.append(
+    box(`${what} 불러오기에 실패했습니다: ${prefix}${message}`, 'bad', 'state state-error'),
+    mutedNote(RETRY_GUIDE),
+  );
+  return block;
+}
+
+// 기기·세션: 불러오는 중 / 빈 목록 / 실패 / 목록을 서로 다른 문장과 모양으로 보여 줍니다.
+function statusList({ title, what, resource, emptyText, scopeNote, describe }) {
+  const section = card();
+  section.append(cardTitle(title));
+  const res = isRecord(resource) ? resource : {};
+  const note = modeNote(res.mode);
+  if (note) section.append(note);
+  if (res.status === 'loading') {
+    section.append(box(`${what} 불러오는 중…`, 'info', 'state state-loading'));
+  } else if (res.status === 'error') {
+    section.append(failureBlock(what, res));
+  } else if (res.status === 'ok' && Array.isArray(res.data)) {
+    if (res.data.length === 0) {
+      section.append(box(emptyText, 'neutral', 'state state-empty'), mutedNote('불러오기는 성공했고 목록이 비어 있습니다. 실패가 아닙니다.'));
+    } else {
+      const list = paint(node('ul'), { margin: '0', padding: '0', listStyle: 'none' });
+      for (const item of res.data) {
+        const entry = paint(node('li'), { display: 'block', padding: '6px 0', color: palette().text });
+        if (isRecord(item)) describe(entry, item); else entry.textContent = '확인 불가: 항목 형식이 맞지 않습니다.';
+        list.append(entry);
+      }
+      section.append(list);
+    }
+  } else if (res.status === 'ok') {
+    section.append(box(`확인 불가: ${what} 응답 형식이 맞지 않습니다.`, 'bad', 'state state-error'));
+  } else {
+    section.append(box(`확인 불가: ${what} 상태를 받지 못했습니다.`, 'bad', 'state state-error'));
+  }
+  if (scopeNote) section.append(mutedNote(scopeNote));
+  return section;
+}
+
+function notificationsBlock(notifications) {
+  const section = card();
+  section.append(cardTitle('알림'));
+  if (!Array.isArray(notifications)) {
+    section.append(box('확인 불가: 알림 목록을 받지 못했습니다.', 'bad', 'state state-error'));
+    return section;
+  }
+  if (notifications.length === 0) {
+    section.append(box('주의할 알림이 없습니다.', 'ok', 'state state-empty'));
+    return section;
+  }
+  const list = paint(node('ul'), { margin: '0', padding: '0', listStyle: 'none' });
+  for (const item of notifications) {
+    const entry = paint(node('li'), { display: 'block', padding: '6px 0', color: palette().text });
+    if (!isRecord(item)) {
+      entry.textContent = '확인 불가: 알림 항목 형식이 맞지 않습니다.';
+    } else {
+      const resource = asText(item.resource);
+      const label = Object.hasOwn(RESOURCE_LABELS, resource) ? `${RESOURCE_LABELS[resource]} (${resource})` : safeCode(resource);
+      entry.append(joined([`자료: ${label}`, `코드: ${safeCode(item.code)}`, safeText(item.message) || '메시지 없음']));
+    }
+    list.append(entry);
+  }
+  section.append(list);
+  return section;
+}
+
+function diagnosticsBlock(diagnostics) {
+  const section = card();
+  section.append(cardTitle('연결 점검(진단) 정보'));
+  const res = isRecord(diagnostics) ? diagnostics : {};
+  const note = modeNote(res.mode);
+  if (note) section.append(note);
+  const picked = res.status === 'ok' ? pickDiagnostics(res.data) : null;
+  if (res.status === 'loading') {
+    section.append(box('연결 점검 정보를 불러오는 중…', 'info', 'state state-loading'));
+  } else if (res.status === 'error') {
+    section.append(failureBlock('연결 점검 정보', res));
+  } else if (picked) {
+    const list = node('dl', undefined, 'kv');
+    for (const [name, value] of picked) addRow(list, name, value);
+    section.append(list, mutedNote('위 여섯 값만 표시합니다. 키·토큰·비밀번호는 화면과 복사 내용에 넣지 않습니다.'));
+  } else if (res.status === 'idle') {
+    section.append(box('연결 점검 정보를 아직 불러오지 않았습니다. 위쪽 제공 화면의 「도움정보 불러오기」를 누르면 여기에 표시됩니다.', 'neutral', 'state state-empty'));
+  } else {
+    section.append(box('확인 불가: 연결 점검 정보를 받지 못했거나 형식이 맞지 않습니다.', 'bad', 'state state-error'));
+  }
+  return { section, picked, status: asText(res.status) || 'unknown' };
+}
+
+// 사용자가 버튼을 누를 때만 복사합니다. 복사하는 값은 위 진단 여섯 값과 연결 모드뿐입니다.
+function helpBlock(diag, mode) {
+  const lines = [`단계: ${STAGE_LABEL}`, `연결 모드: ${Object.hasOwn(MODE_LABELS, mode) || mode === 'connected' ? mode : 'unknown'}`];
+  if (diag.picked) diag.picked.forEach(([name, value]) => lines.push(`${name}: ${value}`));
+  else lines.push(`진단 정보: 확인 불가 (${safeCode(diag.status)})`);
+  const text = lines.join('\n');
+  const block = card();
+  block.append(cardTitle('도움 요청용 정보'));
+  block.append(mutedNote('아래 버튼을 누르면 위의 안전한 값만 복사합니다. 누르기 전에는 복사하지 않습니다. 비밀번호·토큰·API 키는 포함되지 않습니다.'));
+  const result = paint(node('p', undefined, 'muted'), { margin: '8px 0 0', fontWeight: '600', color: palette().text });
+  result.setAttribute('role', 'status');
+  const preview = paint(node('pre'), {
+    display: 'none',
+    margin: '8px 0 0',
+    padding: '8px 10px',
+    whiteSpace: 'pre-wrap',
+    borderRadius: '8px',
+    border: `1px solid ${palette().cardLine}`,
+    color: palette().text,
+  });
+  const button = accessibleButton('도움정보 복사', async () => {
+    let copied = false;
+    try {
+      const clipboard = globalThis.navigator?.clipboard;
+      if (clipboard && typeof clipboard.writeText === 'function') {
+        await clipboard.writeText(text);
+        copied = true;
+      }
+    } catch { /* 복사 권한이 없으면 아래 안내로 직접 복사하게 합니다. */ }
+    result.textContent = copied
+      ? '도움 정보를 클립보드에 복사했습니다. 붙여 넣기 전에 아래 내용에 비밀값이 없는지 확인하세요.'
+      : '자동 복사에 실패했습니다. 아래 내용을 직접 선택해 복사하세요.';
+    preview.textContent = text;
+    preview.style.display = 'block';
+  });
+  block.append(button, result, preview);
+  return block;
+}
+
+function renderStatus(input) {
+  const { devices, sessions, notifications, diagnostics, mode } = isRecord(input) ? input : {};
+  const root = node('section', undefined, 'student-status');
+  root.setAttribute('aria-label', '기기·세션·알림과 연결 점검 상태');
+  const note = modeNote(mode);
+  const diag = diagnosticsBlock(diagnostics);
+  root.append(
+    statusList({
+      title: '등록 기기', what: '기기 목록', resource: devices, emptyText: '등록된 기기가 없습니다.',
+      scopeNote: '내 이름으로 등록되고 회수되지 않은 기기이며 최대 100개까지 보입니다. 서버가 모르는 값은 확인 불가로 표시합니다.',
+      describe: (entry, device) => entry.append(joined([asText(device.label) || asText(device.id) || '확인 불가', stateLine(DEVICE_LABELS, device.status), `ID ${asText(device.id)}`])),
+    }),
+    statusList({
+      title: '현재 세션', what: '세션', resource: sessions, emptyText: '현재 연결된 세션이 없습니다.',
+      scopeNote: '세션은 지금 검증된 연결 하나만 보여 줍니다. 지난 세션 전체 목록이 아닙니다.',
+      describe: (entry, session) => entry.append(joined([`ID ${asText(session.id)}`, stateLine(SESSION_LABELS, session.status)])),
+    }),
+    notificationsBlock(notifications),
+    diag.section,
+    helpBlock(diag, mode),
+  );
+  if (note) root.prepend(note);
+  return root;
+}
+
 export function createStudentView(context) {
   // 앱이 주는 onChange 를 부르면 학생 표시 함수가 최신 자료로 다시 그려집니다(테마를 바꿀 때 씁니다).
   redraw = typeof context?.onChange === 'function' ? context.onChange : () => {};
@@ -591,7 +804,7 @@ export function createStudentView(context) {
     renderIdentity,
     renderDecision,
     renderEvents,
-    renderStatus() { return '학생 구현 대기: 기기·세션·알림과 연결 점검 상태를 구분하세요.'; },
+    renderStatus,
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
     renderAiConnection() { return '학생 구현 대기: 모델 응답 점검과 실제 사건 설명을 구분하고 AI 오류·취소·수동 복구를 안내하세요.'; },
     renderExplanation() { return '학생 구현 대기: 선택한 사건의 근거·규칙·현재 상태와 AI 설명을 연결하세요. 제안은 자동 실행하지 않습니다.'; },

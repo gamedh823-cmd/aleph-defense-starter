@@ -4,7 +4,7 @@
 // ---- 공통: 화면 표기와 보기 좋은 모양 ----
 // 단계가 바뀔 때마다 이 두 줄만 바꿉니다.
 const AGENT_NAME = '등대, 낯선 접속을 가장 먼저 알아보다';
-const STAGE_LABEL = '5차 방어전 · 18단계';
+const STAGE_LABEL = '5차 방어전 · 19단계';
 
 // 제공 CSS 는 건드리지 않고, 학생 칸의 모양은 여기서 요소별로 입힙니다(style-src 'self' 에서도 CSSOM 은 허용).
 // 라이트·다크 두 벌의 색을 두고, 학생 칸 배너의 버튼으로 고릅니다. 선택값은 주소 뒤 #theme=… 에만 둡니다.
@@ -994,6 +994,102 @@ function renderExplanation(input) {
   return root;
 }
 
+// ---- 19단계: AI 조치 제안과 실제 처리 결과 ----
+// 이 칸은 조치 버튼·POST 요청·확인 티켓을 만들지 않습니다. 집행·재조회·취소는 제공 화면 버튼으로만 합니다.
+const ACTION_STATUS_VIEWS = {
+  idle: { label: '아직 미실행', tone: 'neutral' },
+  prepared: { label: '준비됨 · 미실행(prepared)', tone: 'warn' },
+  executing: { label: '서버에 전달 중(executing)', tone: 'info' },
+  pending: { label: '서버 접수 · 처리 중(pending)', tone: 'info' },
+  denied: { label: '거절(denied)', tone: 'bad' },
+  failed: { label: '실패(failed)', tone: 'bad' },
+  expired: { label: '확인 기한 지남(expired)', tone: 'warn' },
+};
+
+// 현재 사건·근거 ID·조치·대상·접수 정보를 받은 범위에서만 글자로 보여 줍니다.
+function actionFactsList(event, actionId, target, receipt) {
+  const list = node('dl', undefined, 'kv');
+  let any = false;
+  const add = (term, value) => {
+    const text = asText(value);
+    if (!text) return;
+    addRow(list, term, text);
+    any = true;
+  };
+  if (isRecord(event)) {
+    add('사건 ID', event.id);
+    if (Array.isArray(event.evidence)) {
+      const ids = event.evidence.filter(isRecord).map((item) => asText(item.id)).filter(Boolean);
+      if (ids.length) { addRow(list, '근거 ID', ids.join(', ')); any = true; }
+    }
+  }
+  add('조치', actionId);
+  if (isRecord(target)) {
+    add('대상 ID', target.id);
+    add('대상 generation', target.generation);
+  }
+  if (isRecord(receipt)) {
+    add('요청 ID', receipt.requestId);
+    add('접수 ID', receipt.receiptId);
+    add('버전', receipt.version);
+  }
+  return any ? list : null;
+}
+
+function renderAction(input) {
+  const { status, event, actionId, target, receipt, observation, message, confirmationExpiresAt, error } = isRecord(input) ? input : {};
+  const root = card();
+  root.className = 'student-action';
+  root.setAttribute('aria-label', '보안 조치 요청 상태');
+  root.append(cardTitle('보안 조치 요청 상태'));
+
+  // 현재 입력으로만 다시 그리므로, 다른 사건·요청이 오면 이전 표시는 자동으로 사라집니다.
+  if (isRecord(event) && asText(event.id)) root.dataset.studentActionEvent = asText(event.id);
+  if (isRecord(receipt) && asText(receipt.requestId)) root.dataset.studentActionRequest = asText(receipt.requestId);
+
+  const code = asText(status);
+  if (code === 'error') {
+    const errCode = safeCode(isRecord(error) ? error.code : '');
+    const errMessage = safeText(isRecord(error) ? error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
+    root.append(box(`요청이 처리되지 않았습니다 (${errCode}): ${errMessage}`, 'bad', 'state state-error'));
+  } else if (code === 'succeeded') {
+    // 서버가 받았다는 것(ACK)이 아니라, 연동 시스템이 effectApplied:true 로 효과를 확인했을 때만 성공으로 보여 줍니다.
+    if (isRecord(observation) && observation.effectApplied === true) {
+      root.append(box('효과 확인(succeeded)', 'ok', 'state state-ok'));
+      const obsList = node('dl', undefined, 'kv');
+      addRow(obsList, '관측 시각', safeText(observation.observedAt, 40) || '시각 정보 없음');
+      addRow(obsList, 'effectApplied', 'true');
+      if (isRecord(receipt) && asText(receipt.receiptId)) addRow(obsList, '접수 ID', asText(receipt.receiptId));
+      root.append(obsList);
+    } else {
+      root.append(box('결과 불명: 연동 시스템이 효과를 확인하지 않았습니다.', 'warn', 'state state-error'));
+      root.append(mutedNote('성공으로도 효과 없음으로도 판단하지 않습니다. 제공 화면의 「연동 시스템 결과만 재조회」로 다시 확인하세요.'));
+    }
+  } else if (code === 'unknown') {
+    root.append(box('결과 불명(unknown)', 'warn', 'state state-error'));
+    root.append(mutedNote('효과 없음으로도 성공으로도 단정하지 않습니다. 제공 화면의 「연동 시스템 결과만 재조회」로 결과만 다시 확인하세요.'));
+  } else if (Object.hasOwn(ACTION_STATUS_VIEWS, code)) {
+    const view = ACTION_STATUS_VIEWS[code];
+    root.append(box(view.label, view.tone, 'state'));
+    if (code === 'prepared') {
+      root.append(mutedNote(`확인 기한: ${safeText(confirmationExpiresAt, 40) || '정보 없음'}. 진행하려면 제공 화면의 「대상과 조치를 확인했으며 집행합니다」를 누르세요.`));
+    } else if (code === 'executing' || code === 'pending') {
+      root.append(mutedNote('서버가 받았다는 것(ACK)은 효과가 아닙니다. 결과가 아직 확인되지 않았습니다.'));
+    } else if (code === 'expired') {
+      root.append(mutedNote('확인 기한이 지났습니다. 제공 화면에서 조치를 다시 준비하세요.'));
+    } else if (code === 'denied' || code === 'failed') {
+      root.append(mutedNote(safeText(message) || '연동 시스템이 이유를 알려 주지 않았습니다.'));
+    }
+  } else {
+    root.append(box('확인 불가: 조치 상태를 받지 못했습니다.', 'bad', 'state state-error'));
+  }
+
+  const facts = actionFactsList(event, actionId, target, receipt);
+  if (facts) root.append(facts);
+  root.append(mutedNote('이 화면은 조치를 실행하지 않습니다. 준비·집행·재조회·취소는 제공 화면의 버튼으로만 합니다.'));
+  return root;
+}
+
 export function createStudentView(context) {
   // 앱이 주는 onChange 를 부르면 학생 표시 함수가 최신 자료로 다시 그려집니다(테마를 바꿀 때 씁니다).
   redraw = typeof context?.onChange === 'function' ? context.onChange : () => {};
@@ -1005,6 +1101,6 @@ export function createStudentView(context) {
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
     renderAiConnection,
     renderExplanation,
-    renderAction() { return '학생 구현 대기: 현재 사건·조치·실제 대상·사람 확인·ACK와 원천 효과·unknown을 구분하세요.'; },
+    renderAction,
   };
 }

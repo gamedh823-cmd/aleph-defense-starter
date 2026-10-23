@@ -997,7 +997,8 @@ function renderExplanation(input) {
 // ---- 19단계: AI 조치 제안과 실제 처리 결과 ----
 // 이 칸은 조치 버튼·POST 요청·확인 티켓을 만들지 않습니다. 집행·재조회·취소는 제공 화면 버튼으로만 합니다.
 const ACTION_STATUS_VIEWS = {
-  idle: { label: '아직 미실행', tone: 'neutral' },
+  idle: { label: '아직 미실행(idle)', tone: 'neutral' },
+  loading: { label: '준비 또는 결과 확인 중(loading). 아직 결과가 없습니다.', tone: 'info' },
   prepared: { label: '준비됨 · 미실행(prepared)', tone: 'warn' },
   executing: { label: '서버에 전달 중(executing)', tone: 'info' },
   pending: { label: '서버 접수 · 처리 중(pending)', tone: 'info' },
@@ -1051,7 +1052,7 @@ function renderAction(input) {
   if (code === 'error') {
     const errCode = safeCode(isRecord(error) ? error.code : '');
     const errMessage = safeText(isRecord(error) ? error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
-    root.append(box(`요청이 처리되지 않았습니다 (${errCode}): ${errMessage}`, 'bad', 'state state-error'));
+    root.append(box(`요청이 처리되지 않았습니다(error) · ${errCode}: ${errMessage}`, 'bad', 'state state-error'));
   } else if (code === 'succeeded') {
     // 서버가 받았다는 것(ACK)이 아니라, 연동 시스템이 effectApplied:true 로 효과를 확인했을 때만 성공으로 보여 줍니다.
     if (isRecord(observation) && observation.effectApplied === true) {
@@ -1062,7 +1063,7 @@ function renderAction(input) {
       if (isRecord(receipt) && asText(receipt.receiptId)) addRow(obsList, '접수 ID', asText(receipt.receiptId));
       root.append(obsList);
     } else {
-      root.append(box('결과 불명: 연동 시스템이 효과를 확인하지 않았습니다.', 'warn', 'state state-error'));
+      root.append(box('결과 불명(succeeded, 효과 미확인): 연동 시스템이 효과를 확인하지 않았습니다.', 'warn', 'state state-error'));
       root.append(mutedNote('성공으로도 효과 없음으로도 판단하지 않습니다. 제공 화면의 「연동 시스템 결과만 재조회」로 다시 확인하세요.'));
     }
   } else if (code === 'unknown') {
@@ -1081,7 +1082,7 @@ function renderAction(input) {
       root.append(mutedNote(safeText(message) || '연동 시스템이 이유를 알려 주지 않았습니다.'));
     }
   } else {
-    root.append(box('확인 불가: 조치 상태를 받지 못했습니다.', 'bad', 'state state-error'));
+    root.append(box(`확인 불가: 조치 상태를 받지 못했습니다(${code || 'unknown'}).`, 'bad', 'state state-error'));
   }
 
   const facts = actionFactsList(event, actionId, target, receipt);

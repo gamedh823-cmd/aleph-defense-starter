@@ -68,8 +68,10 @@ flowchart LR
   ADPT -.->|-SdpHostConfig| SDP[(운영자 SDP 접근제어·XDR 시스템)]
   S -->|/api/ai/*| AI[src/ai/service.mjs]
   AI -.->|-NativeHostConfig / Workbench 승인| GW[(운영 AI 게이트웨이)]
-  S -->|/api/vuln| OSV[src/vulnerabilities/osv.mjs]
-  OSV -->|공개 HTTPS 조회| OSVDB[(OSV 취약점 DB)]
+  S -->|GET /api/vulnerabilities| SCAN[src/vulnerabilities/project-scan.mjs<br/>createProjectScanner.scan]
+  SCAN -->|package-lock.json·설치 node_modules 메타데이터 검증| LOCK[(ON_PROJECT_DIRECTORY 아래 프로젝트 파일)]
+  SCAN -->|승인된 패키지만 조회| OSVCLIENT[src/vulnerabilities/osv.mjs<br/>lookupPackages]
+  OSVCLIENT -->|공개 HTTPS| OSVDB[(OSV 취약점 DB<br/>api.osv.dev/v1/querybatch)]
 ```
 
 글로 풀어 쓰면:
@@ -78,7 +80,7 @@ flowchart LR
 - 서버는 제공 화면(`public/app.js`)을 내려주고, 그 화면이 내 구현(`student/extension.mjs`)의 `render*` 함수들을 호출해 상태별 화면을 그립니다.
 - 서버는 **접근 제어·XDR 시스템**에 `src/engine.mjs`의 `loadEngine()`을 통해 연결을 시도합니다. 운영자가 `-SdpHostConfig`로 개인 SDP 설정을 넘긴 경우에만 `student/engine-adapter.mjs`의 `createEngine()`이 실제 엔진을 돌려주고, 없으면 `{evidenceMode:'disconnected'}`가 쓰여 모든 자료 요청이 `ENGINE_NOT_CONNECTED`로 실패합니다. **이 PC에서는 SDP 설정이 없어 disconnected 상태인 것을 직접 확인했습니다.**
 - 서버는 **AI 게이트웨이**에 `/api/ai/*` 경로로 연결하며, 내부적으로 `src/ai/service.mjs`가 Workbench 계정 연결(native host)·앱 권한 승인 체인을 거쳐야 합니다. 운영자 측 권한 발급 전에는 `ON_AI_PROVISIONING_PENDING`이 납니다. **17단계 제출 판정에서 이 오류 코드가 그대로 재현되는 것을 확인했습니다(학생 코드 문제 아님, 포털 판정에서도 같은 결론).**
-- **OSV 취약점 조회**(`src/vulnerabilities/osv.mjs`)는 위 두 연결과 무관하게 독립적으로 동작합니다. **20단계에서 "설치 패키지 조회" 버튼을 직접 눌러, 허용 목록이 비어 있어 `not_configured` 응답이 오고 학생 화면에 그대로 표시되는 것을 실측 확인했습니다.**
+- **OSV 취약점 조회**는 위 두 연결과 무관하게 독립적으로 동작합니다. 서버는 `GET /api/vulnerabilities`를 `src/vulnerabilities/project-scan.mjs`의 `createProjectScanner().scan()`에 연결합니다(`src/server.mjs` 690~691행). `scan()`은 먼저 `ON_PROJECT_DIRECTORY`(운영자가 지정하는 절대 경로)의 `package-lock.json`과 설치된 `node_modules`의 `package.json` 메타데이터를 읽어 대조하고, 그 뒤 승인된 패키지만 `src/vulnerabilities/osv.mjs`의 `lookupPackages()`로 공개 OSV 배치 조회(`https://api.osv.dev/v1/querybatch`)를 보냅니다. **20단계에서 "설치 패키지 조회" 버튼을 직접 눌러, 화면에 `조회 준비 미완료(not_configured)`가 뜨고 학생 화면에 그대로 표시되는 것을 실측 확인했습니다** — 원인은 코드 원문상 `ON_PROJECT_DIRECTORY`가 설정되지 않아 `project-scan.mjs`가 `PROJECT_NOT_CONFIGURED`를 돌려준 것으로 추정됩니다(운영자 설정값이라 이 PC에서 직접 확인은 못함).
 
 ## 5. 구현한 함수 · 제공 코드 경계 · 확인한 기능 · 미확인 기능
 
@@ -91,9 +93,9 @@ flowchart LR
 | 17 | `renderAiConnection` | 로컬 실행 · idle 화면 확인, ALEPH 제출 **통과** | 실제 verified 연결은 운영자 권한 발급 전이라 미확인 |
 | 18 | `renderExplanation`(완성) | 로컬 실행 · "기록을 먼저 고르세요" idle 화면만 확인(이벤트 데이터 없음), ALEPH 제출 **통과** | 근거 일치/불일치·제안 표시 분기는 **코드 리뷰로만 확인, 실제 화면 미확인** |
 | 19 | `renderAction` | 로컬 실행 · idle 화면 확인, ALEPH 제출 **통과**(최초 제출 loading 분기 누락으로 실패 → 수정 후 통과) | prepared~succeeded 전 구간은 **코드 리뷰로만 확인, 실제 화면 미확인** |
-| 20 | `renderVulnerabilities` | 로컬 실행 · 실제 OSV 조회 버튼을 눌러 `not_configured` 응답과 화면 표시를 **실측 확인**, ALEPH 제출 결과 제출 당시 대기 중 | known_vulnerabilities·partial 등 허용 목록이 채워졌을 때의 실제 표시는 **미확인** |
+| 20 | `renderVulnerabilities` | 로컬 실행 · 실제 조회 버튼을 눌러 `not_configured` 응답(관측값)과 화면 표시를 **실측 확인**, ALEPH 제출 **통과** | `PROJECT_NOT_CONFIGURED`가 원인이라는 것은 코드 원문으로 추정한 것이며 운영자 설정이라 직접 확인 불가. `complete`·`partial`·`known_vulnerabilities` 등 승인 목록이 채워졌을 때의 실제 표시는 **미확인** |
 
-**제공 코드 경계(학생이 고치지 않음):** `public/app.js`, `src/server.mjs`, `src/engine.mjs`, `src/ai/*`, `src/vulnerabilities/osv.mjs`, `src/actions/*`, `src/connection/*`, `src/learner-support/*`, `tools/*`, `vendor/*`, `student/engine-adapter.mjs`(운영자 SDP 연결 전용 틀, 호출되지 않음).
+**제공 코드 경계(학생이 고치지 않음):** `public/app.js`, `src/server.mjs`, `src/engine.mjs`, `src/ai/*`, `src/vulnerabilities/osv.mjs`, `src/vulnerabilities/project-scan.mjs`, `src/actions/*`, `src/connection/*`, `src/learner-support/*`, `tools/*`, `vendor/*`, `student/engine-adapter.mjs`(운영자 SDP 연결 전용 틀, 호출되지 않음).
 
 **학생 작성 범위:** `on-client/student/extension.mjs` 하나뿐입니다. 색상이 아니라 텍스트로 상태를 구분하고(`asText`/`safeText`/`safeCode` 사용), DOM은 `document.createElement`와 `textContent`로만 구성했습니다.
 
@@ -103,7 +105,8 @@ flowchart LR
 |---|---|---|
 | `연결 없음(disconnected)` / `ENGINE_NOT_CONNECTED` | `src/engine.mjs`에 SDP 설정 연결 여부 | 운영자 SDP 설정이 없는 기본 상태입니다 |
 | `ON_AI_PROVISIONING_PENDING` 등 AI 오류 코드 | `student/extension.mjs`의 `AI_ERROR_KINDS` 매핑, `docs/CONNECTION_TROUBLESHOOT.md` 4·5절 | 운영자 쪽 권한·게이트 반영이 끝나야 사라집니다 |
-| `not_configured`/`not_checked`(OSV) | 담당자의 공개 패키지 허용 목록 설정 여부 | 허용 목록이 비어 있으면 정상적으로 나는 상태입니다 |
+| `조회 준비 미완료(not_configured)` · 코드 `PROJECT_NOT_CONFIGURED`(OSV) | 서버 환경변수 `ON_PROJECT_DIRECTORY`가 절대 경로로 설정됐는지(`src/vulnerabilities/project-scan.mjs` 82행) | 운영자가 조회 대상 프로젝트 경로를 아직 지정하지 않은 상태입니다. **설정 자체가 없는 상태**이며 학생이 고칠 수 없습니다 |
+| `아직 조회 안 함(not_checked)` · 코드 `NO_APPROVED_PACKAGES`(OSV) | 담당자가 지정한 공개 패키지 허용 목록(`approvedPublicPackages`)에 이 프로젝트의 lock 파일 패키지가 하나도 안 걸렸는지(`project-scan.mjs` 90행) | 프로젝트 경로·lock 파일은 **정상적으로 읽었지만** 조회할 승인된 패키지가 없는 상태입니다. `not_configured`와 원인이 다릅니다 |
 | 포털 "확인 불가" 판정 | 포털의 "AI 판정 설명 보기" 원문 | 코드 실패가 아니라 원문 크기·운영 준비 등 별도 원인일 수 있습니다(17단계에서 실제로 그랬습니다) |
 
 ## 7. 지원하지 않는 것 / 확인하지 않은 것

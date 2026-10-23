@@ -4,7 +4,7 @@
 // ---- 공통: 화면 표기와 보기 좋은 모양 ----
 // 단계가 바뀔 때마다 이 두 줄만 바꿉니다.
 const AGENT_NAME = '등대, 낯선 접속을 가장 먼저 알아보다';
-const STAGE_LABEL = '5차 방어전 · 19단계';
+const STAGE_LABEL = '5차 방어전 · 20단계';
 
 // 제공 CSS 는 건드리지 않고, 학생 칸의 모양은 여기서 요소별로 입힙니다(style-src 'self' 에서도 CSSOM 은 허용).
 // 라이트·다크 두 벌의 색을 두고, 학생 칸 배너의 버튼으로 고릅니다. 선택값은 주소 뒤 #theme=… 에만 둡니다.
@@ -1091,6 +1091,101 @@ function renderAction(input) {
   return root;
 }
 
+// ---- 20단계: 설치 패키지 버전과 OSV 취약점 조회 ----
+const PKG_OVERALL_STATUS = {
+  complete: '모두 조회(complete)',
+  partial: '일부 조회 실패(partial)',
+  not_checked: '아직 조회 안 함(not_checked)',
+  not_configured: '조회 준비 미완료(not_configured)',
+  unverifiable: 'lock 파일 확인 불가(unverifiable)',
+};
+const PKG_STATUS_LABELS = {
+  known_vulnerabilities: '알려진 항목 있음(known_vulnerabilities)',
+  none_found: '알려진 항목 없음(none_found)',
+  unverifiable: '조회 확인 불가(unverifiable)',
+};
+
+function vulnerabilityList(vulnerabilities) {
+  if (!Array.isArray(vulnerabilities) || vulnerabilities.length === 0) return null;
+  return listBlock(
+    '취약점',
+    vulnerabilities.filter(isRecord),
+    (item) => `${asText(item.id) || '(id 없음)'} · 수정 ${safeText(item.modified, 40) || '시각 정보 없음'}`,
+    '',
+  );
+}
+
+function packageRow(pkg) {
+  const row = card();
+  row.dataset.studentPackageName = asText(pkg.name);
+  row.dataset.studentPackageVersion = asText(pkg.version);
+  const list = node('dl', undefined, 'kv');
+  addRow(list, '패키지', asText(pkg.name) || '(이름 없음)');
+  addRow(list, '설치 버전', asText(pkg.version) || '확인 불가');
+  const statusCode = asText(pkg.status);
+  addRow(list, '조회 상태', Object.hasOwn(PKG_STATUS_LABELS, statusCode) ? PKG_STATUS_LABELS[statusCode] : `확인 불가 (${statusCode || 'unknown'})`);
+  addRow(list, '출처', asText(pkg.source) || '정보 없음');
+  addRow(list, '확인 시각', safeText(pkg.checkedAt, 40) || '시각 정보 없음');
+  row.append(list);
+  const vulnBlock = vulnerabilityList(pkg.vulnerabilities);
+  if (vulnBlock) {
+    // 조회가 unverifiable 이어도 이미 받은 취약점 ID 는 지우지 않고 그대로 보여 줍니다.
+    if (statusCode === 'unverifiable') row.append(mutedNote('일부 확인 · 전체 조회 확인 불가. 이미 받은 취약점 ID는 지우지 않습니다.'));
+    row.append(vulnBlock);
+  } else if (statusCode === 'none_found') {
+    row.append(mutedNote('이 조회 범위에서 알려진 취약점이 없습니다. 안전을 보장하는 것은 아닙니다.'));
+  }
+  return row;
+}
+
+function renderVulnerabilities(input) {
+  const { status, mode, data, error } = isRecord(input) ? input : {};
+  const root = card();
+  root.className = 'student-vulnerabilities';
+  root.setAttribute('aria-label', '설치 패키지와 취약점 조회 결과');
+  root.append(cardTitle('설치 패키지와 취약점 조회'));
+  const note = modeNote(mode);
+  if (note) root.append(note);
+
+  if (status === 'idle') {
+    root.append(box('조회 전', 'neutral', 'state state-empty'));
+    return root;
+  }
+  if (status === 'loading') {
+    root.append(box('조회 중', 'info', 'state state-loading'));
+    root.append(mutedNote('진행 중에는 이전 결과를 현재 결과처럼 보여주지 않습니다.'));
+    return root;
+  }
+  if (status === 'error') {
+    const message = safeText(isRecord(error) ? error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
+    root.append(box(`조회 실패: ${message}`, 'bad', 'state state-error'));
+    root.append(mutedNote('이전 조회 결과는 현재 결과가 아니므로 표시하지 않습니다.'));
+    return root;
+  }
+  if (status !== 'ok' || !isRecord(data)) {
+    root.append(box(`확인 불가: 조회 결과의 형식이 맞지 않습니다(${asText(status) || 'unknown'}).`, 'bad', 'state state-error'));
+    return root;
+  }
+
+  const overallCode = asText(data.status);
+  const overallTone = overallCode === 'complete' ? 'ok' : overallCode === 'partial' ? 'warn' : 'neutral';
+  root.append(box(Object.hasOwn(PKG_OVERALL_STATUS, overallCode) ? PKG_OVERALL_STATUS[overallCode] : `확인 불가 (${overallCode || 'unknown'})`, overallTone, 'state'));
+
+  const meta = node('dl', undefined, 'kv');
+  addRow(meta, 'lock 파일 버전', safeText(data.lockfileVersion, 40) || '정보 없음');
+  addRow(meta, 'lock 파일 해시', safeText(data.lockfileHash, 100) || '정보 없음');
+  addRow(meta, '확인 시각', safeText(data.checkedAt, 40) || '시각 정보 없음');
+  root.append(meta);
+
+  const packages = Array.isArray(data.packages) ? data.packages.filter(isRecord) : [];
+  if (packages.length === 0) {
+    root.append(mutedNote('표시할 패키지가 없습니다. 조회 준비 미완료이거나 lock 파일을 확인할 수 없는 상태일 수 있습니다.'));
+  } else {
+    for (const pkg of packages) root.append(packageRow(pkg));
+  }
+  return root;
+}
+
 export function createStudentView(context) {
   // 앱이 주는 onChange 를 부르면 학생 표시 함수가 최신 자료로 다시 그려집니다(테마를 바꿀 때 씁니다).
   redraw = typeof context?.onChange === 'function' ? context.onChange : () => {};
@@ -1099,7 +1194,7 @@ export function createStudentView(context) {
     renderDecision,
     renderEvents,
     renderStatus,
-    renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
+    renderVulnerabilities,
     renderAiConnection,
     renderExplanation,
     renderAction,

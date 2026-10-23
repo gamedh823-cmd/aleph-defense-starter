@@ -7,7 +7,19 @@
 - 저장소: `https://github.com/gamedh823-cmd/aleph-defense-starter`
 - 브랜치: `main`
 - 재현한 커밋: `7645d5a87305e9bd2770144840c05423c673e7c7`("21단계: 취약점 조회 구성도와 오류 원인을 실제 코드에 맞춰 수정")
-- 이 문서가 포함된 최종 제출 커밋은 위 커밋에 `on-client/docs/STUDENT_REPRODUCTION.md` 한 파일만 더한 것입니다. `on-client/student/extension.mjs`를 비롯한 코드는 재현 과정에서 고치지 않았으므로, 위에서 재현한 결과는 최종 제출 커밋에도 그대로 적용됩니다.
+- 이 재현 이후 이 문서(`on-client/docs/STUDENT_REPRODUCTION.md`)를 두 차례 더 고쳤고(최초 작성, `reproduction_record_consistency`·`data_preservation_plan` 판정 반영 수정), 그때마다 **이 파일 하나만** 바꿔 커밋했습니다. 아래는 재현 대상 커밋(`7645d5a`)과 이번 제출 커밋 사이의 실제 `git diff --stat` 결과이며, 바뀐 파일이 이 문서 하나뿐이고 실행 코드(`on-client/src/*`, `on-client/public/*`, `on-client/student/*`, `on-client/tools/*`)는 전혀 바뀌지 않았다는 것을 그대로 보여 줍니다. 즉 3절의 재현 절차는 이번 제출 커밋의 코드에도 그대로 적용됩니다.
+
+  ```
+  $ git diff --stat 7645d5a87305e9bd2770144840c05423c673e7c7 HEAD
+   on-client/docs/STUDENT_REPRODUCTION.md | 82 ++++++++++++++++++++++++++++++++++
+   1 file changed, 82 insertions(+)
+  ```
+  (위 출력은 이 문단을 쓰는 시점의 작업 트리 기준이며, 이 문장 자체를 추가하는 한 줄만큼 실제 커밋 시점엔 삽입 줄 수가 조금 더 늘어날 수 있습니다. 바뀐 **파일은 여전히 `on-client/docs/STUDENT_REPRODUCTION.md` 하나뿐**입니다 — 위 명령을 그대로 실행하면 누구나 같은 사실을 확인할 수 있습니다.)
+
+  확인 방법(다른 사람도 그대로 재현할 수 있도록 명령을 남깁니다):
+  ```powershell
+  git diff --stat 7645d5a87305e9bd2770144840c05423c673e7c7 HEAD
+  ```
 
 ## 2. 이동 가능한 구성 확인
 
@@ -49,10 +61,17 @@
 
 ## 5. 데이터 보존 계획
 
-- 이 앱(`on-client`) 자체는 로컬 파일에 쓰기 동작이 없는 **상태 없는(stateless)** 정적/프록시 서버입니다(2절 확인). 보존해야 할 로컬 데이터가 없습니다.
-- 유일하게 지속되는 값은 테마 선택(`#theme=light|dark`)이며, 이는 브라우저 주소의 URL 해시에만 있고 서버나 디스크에 저장되지 않습니다. 새 환경에서는 당연히 초기화됩니다(백업 대상 아님).
-- 실제로 보존해야 하는 것은 **Git 커밋 이력**뿐이며, GitHub 공개 저장소(`gamedh823-cmd/aleph-defense-starter`)에 push되어 있어 별도 백업 없이도 복원 가능합니다. 제한: 저장소를 지우거나 강제 push로 이력을 덮으면 복구 수단이 없습니다(이 작업들은 하지 않았습니다).
-- 운영자 측 SDP/AI 연결 설정 파일(native host·SDP host config)은 이 저장소 밖에 보관되는 구조라(README·CONNECTION_TROUBLESHOOT.md 기준) 학생 쪽 보존 계획에 포함되지 않습니다.
+이전 판에서 "앱 전체에 저장 동작이 없다"고 적었는데, 이는 **이번 기본 미연결 실행(엔진·DB·자격 모두 설정 없음)에서 이 저장 경로들을 쓰지 않았다**는 뜻이었어야 합니다. 코드 전체를 다시 읽어 저장소 내부 소스와, 저장소 밖에서 운영자가 지정하는 외부 영속 자료를 나눠 적습니다.
+
+| 자료 | 어디 있나 | 코드 근거 | 보존 담당 | 백업·복원 | 제한 |
+|---|---|---|---|---|---|
+| 소스 코드·커밋 이력 | Git 저장소(`gamedh823-cmd/aleph-defense-starter`, GitHub 공개) | 해당 없음(저장소 자체) | 학생 | GitHub가 원본, 로컬 clone이 복제본. 별도 백업 불필요 | 저장소 삭제·강제 push로 이력을 덮으면 복구 수단 없음(이번 재현에서 하지 않음) |
+| 테마 선택(`#theme=light\|dark`) | 브라우저 주소 URL 해시 | `student/extension.mjs`의 `initialTheme`/`toggleTheme` | 해당 없음 | 서버·디스크에 없어 백업 대상 아님 | 새 환경에서 당연히 초기화됨 |
+| 조치 요청·상태·감사 기록(`alekov_action_intents`/`alekov_action_state`/`alekov_action_audit`) | 운영자가 지정하는 **기존** SQLite DB 파일(`databasePath`), 저장소 밖 | `src/actions/store.mjs`(`createActionStore`), `src/server.mjs` 212~224행(`sdpActionStartup.databasePath`) | **운영자**(DB 파일 소유자) | DB 파일 자체를 운영자가 백업·복원. `intents`·`audit` 테이블은 `BEFORE UPDATE`/`BEFORE DELETE` 트리거로 수정·삭제가 막혀 있어(코드 원문 확인) 복원해도 과거 기록이 바뀌지 않음 | **복원 직후 자동 재집행 금지**: `status`가 `pending`/`succeeded`로 복원되더라도 그 자체를 효과로 보지 않고, 19단계 화면 기준대로 연동 시스템에 **재조회**해서 `observation.effectApplied`를 다시 확인해야 함(이 문서 작성 기준 학생 쪽에서 실제로 복원해 본 적 없음, 코드 리뷰로만 확인) |
+| AI 게이트웨이 자격증명(`sk-on-...` 토큰) | 운영자가 지정하는 `vaultRoot` 아래, Windows DPAPI로 암호화 | `src/ai/credential-vault.mjs`(`createAppCredentialVault`, `process.platform!=='win32'`면 `ALEKOV_VAULT_WINDOWS_REQUIRED`로 거부), `tools/app-credentials.ps1` | 운영자/해당 PC 사용자 | DPAPI 암호화 파일 자체를 복사 가능 | **DPAPI는 암호화한 Windows 계정+PC에 종속**이라 다른 PC나 다른 윈도우 계정으로 파일만 옮기면 복호화할 수 없음. 이동하려면 파일 복사가 아니라 새 PC에서 **승인 절차를 처음부터 다시** 밟아야 함(이 문서 작성 기준 실제로 다른 PC로 옮겨 본 적 없음, 코드 원문으로만 확인) |
+| 네이티브 호스트 등록 정보(계정 연결용) | Windows 레지스트리(머신·계정별 로컬 상태) | `tools/native-host-registry.ps1`("별도 호스트 registry. 원 Vault·학생 폴더에는 파일을 쓰지 않는다") | 해당 PC 사용자 | 레지스트리 내보내기/가져오기는 운영자 안내를 따름(이 문서에서 다루지 않음) | PC를 옮기면 레지스트리도 옮겨야 하며, 그 PC의 Windows 사용자 계정에 종속 |
+
+위 네 가지 중 **소스 코드·커밋 이력**만 학생(이 저장소)이 직접 보존할 책임이 있고, 나머지 셋(조치 DB·DPAPI 자격·네이티브 레지스트리)은 전부 저장소 밖·운영자 또는 실행 PC에 있는 외부 영속 자료라 이번 22단계 재현(2~3절)의 "새 빈 폴더에 clone"에는 포함되지 않았고, 포함될 수도 없습니다(운영자 설정값이므로).
 
 ## 6. 버전과 지원 범위
 

@@ -1,0 +1,113 @@
+# 학생용 실행 설명서 — 케셰브(등대, 낯선 접속을 가장 먼저 알아보다)
+
+이 문서는 13~20단계에서 내(학생)가 `student/extension.mjs`에 구현한 내용을 다른 사람이 그대로 따라 실행하고 확인할 수 있도록 적은 보조 문서입니다. 설치·실행의 공식 기준은 [README.md](../README.md)와 [docs/STUDENT_LAUNCH_GUIDE.md](STUDENT_LAUNCH_GUIDE.md)이며, 이 문서는 그 내용을 덮어쓰지 않고 실제로 이 PC에서 확인한 값만 보탭니다. 오류 코드별 상세 표는 [docs/CONNECTION_TROUBLESHOOT.md](CONNECTION_TROUBLESHOOT.md)에 이미 있어 여기서는 중복하지 않고 참조만 합니다.
+
+## 1. 필요 프로그램과 실제로 확인한 버전
+
+| 항목 | 요구 | 이 PC에서 확인한 값 |
+|---|---|---|
+| Node.js | 22~24, 수업 기준 24.19.0 | `node --version` → `v24.19.0` (확인함) |
+| 외부 npm 의존성 | 없음(README 명시) | `on-client/package.json`에 `dependencies` 없음(확인함) |
+| Git | 커밋·제출용 | 이 저장소에서 기존 커밋 이력으로 사용 중(확인함) |
+
+## 2. 폴더 구조(실제 경로)
+
+```
+aleph-defense-starter/            ← Git 저장소 최상위, 커밋은 여기서 합니다
+├─ on-client/                     ← 이 과제(13~22단계)의 앱 폴더, PowerShell로 켜는 위치
+│  ├─ package.json                (name: alekov-client-starter)
+│  ├─ .on-starter-manifest.json
+│  ├─ README.md                   ← 공식 설치·실행 설명(이 문서가 덮어쓰지 않음)
+│  ├─ docs/                       ← 공식 안내 문서 + 이 문서(STUDENT_RUNBOOK.md)
+│  ├─ public/                     ← 제공 화면(app.js 등, 학생이 고치지 않음)
+│  ├─ src/                        ← 제공 서버·엔진·AI 서비스(학생이 고치지 않음)
+│  │  ├─ server.mjs                (HTTP 서버, /api/* 라우팅)
+│  │  ├─ engine.mjs                (loadEngine/demoEngine)
+│  │  ├─ ai/service.mjs            (AI 게이트웨이 연결)
+│  │  └─ vulnerabilities/osv.mjs   (OSV 조회, 20단계)
+│  ├─ student/                    ← 학생 작성 영역
+│  │  ├─ extension.mjs             (이번 단계들에서 실제로 고친 파일)
+│  │  └─ engine-adapter.mjs        (제공 틀, 운영자가 SDP 호스트를 넘길 때만 쓰임 — 학생이 고치지 않음)
+│  ├─ tools/start-alekov.ps1       ← 실행 도구
+│  └─ vendor/                      ← 제공 보조 모듈
+└─ (xdr/, src/, scripts/ 등 — 1~12단계(2~3차 침공) 전용 폴더, 13~22단계와 무관)
+```
+
+## 3. 켜는 방법(직접 다시 실행해 확인함)
+
+1. 파일 탐색기에서 **`aleph-defense-starter/on-client`** 폴더를 엽니다(저장소 최상위가 아니라 그 **안의** `on-client`입니다 — 커밋할 때 여는 위치와 다릅니다).
+2. 주소 표시줄에 `powershell`을 입력하고 Enter → 그 폴더에서 PowerShell이 열립니다.
+3. 아래 명령 중 하나를 실행합니다.
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start-alekov.ps1
+   ```
+   또는
+   ```powershell
+   npm start
+   ```
+4. **정상 시작 신호**: 콘솔에 아래 문구가 뜨면 켜진 것입니다(코드 원문 그대로, `tools/start-alekov.ps1` 134번째 줄 근처).
+   ```
+   케셰브가 켜졌습니다. 브라우저에서 http://127.0.0.1:5189/ 을 여세요.
+   서버가 응답한 것만 확인했습니다. AI 연결 상태는 화면에서 따로 확인해 주세요.
+   ```
+5. 브라우저에서 **http://127.0.0.1:5189/** 를 엽니다.
+6. **종료**: 콘솔 창에서 `Ctrl+C`. (`-Background`로 켰다면 안내된 프로세스 번호의 `node`를 작업 관리자에서 종료.)
+7. **재실행**: 같은 명령을 다시 실행합니다. 포트 5189가 이미 쓰이고 있다는 메시지가 나오면 `-Port 5190`처럼 다른 포트를 붙입니다.
+
+위 1~6번 순서는 이 세션에서 `node on-client/src/server.mjs`로 같은 서버를 직접 띄워 `http://localhost:5189/`에서 13~20단계 학생 화면이 전부 렌더링되는 것과 OSV 조회(20단계) 버튼의 실제 응답을 확인했습니다. `tools\start-alekov.ps1` 스크립트 자체의 PowerShell 실행은 이 문서 작성 시점에 사용자가 직접 실행하지 않았으므로(동등한 `node` 실행으로 대체 확인), 스크립트 고유의 포트 점검·대기 메시지 동작은 **미확인**으로 남깁니다.
+
+## 4. 구성도 — 브라우저 → 로컬 앱 서버 → 접근 제어·XDR / AI 게이트웨이
+
+```mermaid
+flowchart LR
+  B[브라우저<br/>http://127.0.0.1:5189] -->|HTTP| S[로컬 앱 서버<br/>on-client/src/server.mjs]
+  S -->|제공 UI| P[public/app.js]
+  P -->|호출| E[student/extension.mjs<br/>학생 구현]
+  S -->|loadEngine| EA[src/engine.mjs]
+  EA -->|SDP 호스트 있을 때만| ADPT[student/engine-adapter.mjs]
+  ADPT -.->|-SdpHostConfig| SDP[(운영자 SDP 접근제어·XDR 시스템)]
+  S -->|/api/ai/*| AI[src/ai/service.mjs]
+  AI -.->|-NativeHostConfig / Workbench 승인| GW[(운영 AI 게이트웨이)]
+  S -->|/api/vuln| OSV[src/vulnerabilities/osv.mjs]
+  OSV -->|공개 HTTPS 조회| OSVDB[(OSV 취약점 DB)]
+```
+
+글로 풀어 쓰면:
+
+- **브라우저**(`http://127.0.0.1:5189`)는 **로컬 앱 서버**(`on-client/src/server.mjs`, Node 단일 프로세스)에 HTTP로 요청합니다.
+- 서버는 제공 화면(`public/app.js`)을 내려주고, 그 화면이 내 구현(`student/extension.mjs`)의 `render*` 함수들을 호출해 상태별 화면을 그립니다.
+- 서버는 **접근 제어·XDR 시스템**에 `src/engine.mjs`의 `loadEngine()`을 통해 연결을 시도합니다. 운영자가 `-SdpHostConfig`로 개인 SDP 설정을 넘긴 경우에만 `student/engine-adapter.mjs`의 `createEngine()`이 실제 엔진을 돌려주고, 없으면 `{evidenceMode:'disconnected'}`가 쓰여 모든 자료 요청이 `ENGINE_NOT_CONNECTED`로 실패합니다. **이 PC에서는 SDP 설정이 없어 disconnected 상태인 것을 직접 확인했습니다.**
+- 서버는 **AI 게이트웨이**에 `/api/ai/*` 경로로 연결하며, 내부적으로 `src/ai/service.mjs`가 Workbench 계정 연결(native host)·앱 권한 승인 체인을 거쳐야 합니다. 운영자 측 권한 발급 전에는 `ON_AI_PROVISIONING_PENDING`이 납니다. **17단계 제출 판정에서 이 오류 코드가 그대로 재현되는 것을 확인했습니다(학생 코드 문제 아님, 포털 판정에서도 같은 결론).**
+- **OSV 취약점 조회**(`src/vulnerabilities/osv.mjs`)는 위 두 연결과 무관하게 독립적으로 동작합니다. **20단계에서 "설치 패키지 조회" 버튼을 직접 눌러, 허용 목록이 비어 있어 `not_configured` 응답이 오고 학생 화면에 그대로 표시되는 것을 실측 확인했습니다.**
+
+## 5. 구현한 함수 · 제공 코드 경계 · 확인한 기능 · 미확인 기능
+
+| 단계 | `student/extension.mjs` 함수 | 확인 방식 | 비고 |
+|---|---|---|---|
+| 13 | `renderIdentity` | 로컬 실행 · disconnected 상태 화면 확인, ALEPH 제출 **통과** | |
+| 14 | `renderDecision` | 로컬 실행 · idle 상태 화면 확인, ALEPH 제출 **통과** | |
+| 15 | `renderEvents` | 로컬 실행 · 오류 상태 화면 확인, ALEPH 제출 **통과** | |
+| 16 | `renderStatus` | 로컬 실행 · 알림/진단 블록 화면 확인, ALEPH 제출 **통과** | |
+| 17 | `renderAiConnection` | 로컬 실행 · idle 화면 확인, ALEPH 제출 **통과** | 실제 verified 연결은 운영자 권한 발급 전이라 미확인 |
+| 18 | `renderExplanation`(완성) | 로컬 실행 · "기록을 먼저 고르세요" idle 화면만 확인(이벤트 데이터 없음), ALEPH 제출 **통과** | 근거 일치/불일치·제안 표시 분기는 **코드 리뷰로만 확인, 실제 화면 미확인** |
+| 19 | `renderAction` | 로컬 실행 · idle 화면 확인, ALEPH 제출 **통과**(최초 제출 loading 분기 누락으로 실패 → 수정 후 통과) | prepared~succeeded 전 구간은 **코드 리뷰로만 확인, 실제 화면 미확인** |
+| 20 | `renderVulnerabilities` | 로컬 실행 · 실제 OSV 조회 버튼을 눌러 `not_configured` 응답과 화면 표시를 **실측 확인**, ALEPH 제출 결과 제출 당시 대기 중 | known_vulnerabilities·partial 등 허용 목록이 채워졌을 때의 실제 표시는 **미확인** |
+
+**제공 코드 경계(학생이 고치지 않음):** `public/app.js`, `src/server.mjs`, `src/engine.mjs`, `src/ai/*`, `src/vulnerabilities/osv.mjs`, `src/actions/*`, `src/connection/*`, `src/learner-support/*`, `tools/*`, `vendor/*`, `student/engine-adapter.mjs`(운영자 SDP 연결 전용 틀, 호출되지 않음).
+
+**학생 작성 범위:** `on-client/student/extension.mjs` 하나뿐입니다. 색상이 아니라 텍스트로 상태를 구분하고(`asText`/`safeText`/`safeCode` 사용), DOM은 `document.createElement`와 `textContent`로만 구성했습니다.
+
+## 6. 오류별 확인 순서(요약 — 전체 표는 CONNECTION_TROUBLESHOOT.md)
+
+| 상황 | 먼저 볼 곳 | 성공으로 보지 않는 이유 |
+|---|---|---|
+| `연결 없음(disconnected)` / `ENGINE_NOT_CONNECTED` | `src/engine.mjs`에 SDP 설정 연결 여부 | 운영자 SDP 설정이 없는 기본 상태입니다 |
+| `ON_AI_PROVISIONING_PENDING` 등 AI 오류 코드 | `student/extension.mjs`의 `AI_ERROR_KINDS` 매핑, `docs/CONNECTION_TROUBLESHOOT.md` 4·5절 | 운영자 쪽 권한·게이트 반영이 끝나야 사라집니다 |
+| `not_configured`/`not_checked`(OSV) | 담당자의 공개 패키지 허용 목록 설정 여부 | 허용 목록이 비어 있으면 정상적으로 나는 상태입니다 |
+| 포털 "확인 불가" 판정 | 포털의 "AI 판정 설명 보기" 원문 | 코드 실패가 아니라 원문 크기·운영 준비 등 별도 원인일 수 있습니다(17단계에서 실제로 그랬습니다) |
+
+## 7. 지원하지 않는 것 / 확인하지 않은 것
+
+- 이 문서는 `tools\start-alekov.ps1`를 직접 실행한 결과가 아니라 동등한 `node` 실행으로 확인한 결과를 적었습니다(3절 참고).
+- 실제 SDP 엔진 연결, 실제 AI 게이트웨이 verified 연결, 실제 보안 조치 집행(`prepared`→`succeeded`)은 운영자 측 준비가 끝나지 않아 이 PC에서 실행해 확인하지 못했습니다.
+- `-Background`, `-Demo`, `-NativeHostConfig`, `-SdpHostConfig` 옵션은 코드 원문(`tools/start-alekov.ps1`)만 읽었고 실제로 실행해 보지 않았습니다.

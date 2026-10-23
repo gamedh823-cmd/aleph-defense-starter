@@ -4,7 +4,7 @@
 // ---- 공통: 화면 표기와 보기 좋은 모양 ----
 // 단계가 바뀔 때마다 이 두 줄만 바꿉니다.
 const AGENT_NAME = '등대, 낯선 접속을 가장 먼저 알아보다';
-const STAGE_LABEL = '5차 방어전 · 17단계';
+const STAGE_LABEL = '5차 방어전 · 18단계';
 
 // 제공 CSS 는 건드리지 않고, 학생 칸의 모양은 여기서 요소별로 입힙니다(style-src 'self' 에서도 CSSOM 은 허용).
 // 라이트·다크 두 벌의 색을 두고, 학생 칸 배너의 버튼으로 고릅니다. 선택값은 주소 뒤 #theme=… 에만 둡니다.
@@ -873,7 +873,58 @@ function renderAiConnection(input) {
   return root;
 }
 
-// renderExplanation 은 17단계에서는 기초만 만듭니다(근거·규칙·제안 표시는 18단계).
+// ---- 18단계: 근거에 연결된 AI 사건 설명 ----
+const EXPLANATION_STATE_LABELS = { access: '접속', session: '세션', device: '기기' };
+
+// event.state 에서 unknown 인 항목만 접속·세션·기기별로 뽑습니다. 확인 불가를 정상·안전으로 바꾸지 않습니다.
+function explanationUnknownList(state) {
+  const s = isRecord(state) ? state : {};
+  const lines = [];
+  for (const [key, label] of Object.entries(EXPLANATION_STATE_LABELS)) {
+    if (asText(s[key]) === 'unknown') lines.push(`${label}: 확인 불가 (unknown)`);
+  }
+  return lines;
+}
+
+// evidenceIds 전부가 현재 event.evidence 안에 있을 때만 근거 글 목록을 돌려줍니다. 하나라도 없으면 null(이 설명은 쓸 수 없음).
+function matchedEvidence(evidenceIds, evidence) {
+  if (!Array.isArray(evidenceIds) || evidenceIds.length === 0 || !Array.isArray(evidence)) return null;
+  const byId = new Map(evidence.filter(isRecord).map((item) => [asText(item.id), item]));
+  const matched = [];
+  for (const id of evidenceIds) {
+    const found = byId.get(asText(id));
+    if (!found) return null;
+    matched.push({ id: asText(id), text: asText(found.text) || '내용 없음' });
+  }
+  return matched;
+}
+
+function explanationProposalsBlock(proposals, supportedActions) {
+  const block = node('div');
+  block.append(paint(node('strong', '제안'), { color: palette().text }));
+  const list = Array.isArray(proposals) ? proposals.filter(isRecord) : [];
+  if (list.length === 0) {
+    const hasSupport = Array.isArray(supportedActions) && supportedActions.length > 0;
+    block.append(mutedNote(hasSupport
+      ? 'AI가 제안한 조치가 없습니다.'
+      : '연동 시스템이 지원하는 조치가 없어 제안이 없습니다(정상).'));
+    return block;
+  }
+  const ul = paint(node('ul', undefined, 'plain-list'), { margin: '4px 0 8px', paddingLeft: '18px', color: palette().text });
+  for (const proposal of list) {
+    const li = paint(node('li'), { color: palette().text, margin: '4px 0' });
+    li.append(
+      paint(node('strong', asText(proposal.action) || '(조치 이름 없음)'), {}),
+      ` — ${asText(proposal.reason) || '이유 없음'}`,
+      node('br'),
+      '사람 확인이 필요하며 실행되지 않았습니다.',
+    );
+    ul.append(li);
+  }
+  block.append(ul);
+  return block;
+}
+
 function renderExplanation(input) {
   const { event, explanation, checkedAt } = isRecord(input) ? input : {};
   const root = card();
@@ -881,29 +932,65 @@ function renderExplanation(input) {
   root.setAttribute('aria-label', '선택한 사건의 AI 설명');
   root.append(cardTitle('AI 사건 설명'));
   const res = isRecord(explanation) ? explanation : {};
-  const eventId = isRecord(event) ? asText(event.id) : '';
-  const note = modeNote(res.mode);
-  if (note) root.append(note);
-  if (res.status === 'loading') {
-    root.append(box('AI 설명 요청 중…', 'info', 'state state-loading'));
-  } else if (res.status === 'ok' && isRecord(res.data) && eventId && safeText(res.data.summary)) {
-    // 성공한 설명에만 표식을 붙입니다.
-    root.dataset.studentExplanationEvent = eventId;
-    const list = node('dl', undefined, 'kv');
-    addRow(list, '사건 ID', eventId);
-    addRow(list, '설명 요약', safeText(res.data.summary, 1500));
-    addRow(list, '확인 시각', safeText(checkedAt, 40) || '시각 정보 없음');
-    root.append(list, mutedNote('AI 설명은 참고 정보입니다. 조치는 자동으로 실행되지 않습니다.'));
-  } else if (res.status === 'ok') {
-    root.append(box('확인 불가: 설명 결과의 형식이 맞지 않아 표시하지 않습니다. 기록은 그대로입니다.', 'bad', 'state state-error'));
-  } else if (res.status === 'error') {
+
+  // 오류는 event 유무와 상관없이 먼저 보여 줍니다. 기록은 그대로이며 과제 실패가 아닙니다.
+  if (res.status === 'error') {
     const code = safeCode(isRecord(res.error) ? res.error.code : '');
     const message = safeText(isRecord(res.error) ? res.error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
     root.append(box(`AI 설명 실패 (${code}): ${message}`, 'bad', 'state state-error'));
     root.append(mutedNote('기록은 그대로 유지됩니다. AI 연결이나 응답 문제는 기록을 바꾸지 않습니다. 필요하면 직접 다시 요청하세요.'));
-  } else {
-    root.append(box('아직 설명을 요청하지 않았습니다. 보안 기록에서 사건을 골라 「AI 설명 요청」을 누르세요.', 'neutral', 'state state-empty'));
+    return root;
   }
+  if (!isRecord(event)) {
+    root.append(box('보안 기록에서 기록을 먼저 고르세요.', 'neutral', 'state state-empty'));
+    return root;
+  }
+  if (res.status === 'loading') {
+    root.append(box('AI 설명 요청 중…', 'info', 'state state-loading'));
+    return root;
+  }
+  if (res.status !== 'ok') {
+    root.append(box('아직 설명을 요청하지 않았습니다. 보안 기록에서 사건을 골라 「AI 설명 요청」을 누르세요.', 'neutral', 'state state-empty'));
+    return root;
+  }
+  if (!isRecord(res.data)) {
+    root.append(box('확인 불가: 설명 결과의 형식이 맞지 않아 표시하지 않습니다. 기록은 그대로입니다.', 'bad', 'state state-error'));
+    return root;
+  }
+  const data = res.data;
+  // 제공 코드가 이미 검사했어야 하는 값이지만, 어긋나게 들어와도 성공으로 보여주지 않습니다.
+  if (data.executed === true) {
+    root.append(box('확인 불가: AI가 이미 실행했다고 답한 설명은 쓸 수 없습니다.', 'bad', 'state state-error'));
+    root.append(mutedNote('실행 여부는 사람이 확인합니다. 기록은 그대로입니다.'));
+    return root;
+  }
+  const summary = safeText(data.summary, 1500);
+  const matched = matchedEvidence(data.evidenceIds, event.evidence);
+  if (!summary || !matched) {
+    root.append(box('확인 불가: 이 설명의 근거가 현재 선택한 기록과 맞지 않아 표시하지 않습니다.', 'bad', 'state state-error'));
+    root.append(mutedNote('근거 ID가 이 기록의 근거 목록에 없거나 요약이 비어 있습니다. 내용을 지어내지 않습니다.'));
+    return root;
+  }
+
+  // 근거가 맞아떨어진 설명에만 표식을 붙입니다.
+  root.dataset.studentExplanationEvent = asText(event.id);
+  root.append(cardTitle('AI 설명(참고용)'));
+  const list = node('dl', undefined, 'kv');
+  addRow(list, '사건 ID', asText(event.id) || '(id 없음)');
+  addRow(list, 'AI 요약', summary);
+  addRow(list, '확인 시각', safeText(checkedAt, 40) || '시각 정보 없음');
+  root.append(list);
+  root.append(listBlock('인용한 근거', matched, (item) => `${item.id} — ${item.text}`, '근거가 없습니다.'));
+  root.append(listBlock('규칙', event.rules, (item) => `${asText(item.id) || '(id 없음)'} — ${asText(item.text) || '내용 없음'}`, '규칙 정보가 없습니다.'));
+
+  const unknowns = explanationUnknownList(event.state);
+  const unknownBlock = node('div');
+  unknownBlock.append(paint(node('strong', '확인 불가 상태 (unknown)'), { color: palette().text }));
+  unknownBlock.append(mutedNote(unknowns.length ? unknowns.join(' · ') : '없음'));
+  root.append(unknownBlock);
+
+  root.append(explanationProposalsBlock(data.proposals, event.supportedActions));
+  root.append(mutedNote('AI 설명은 참고 정보입니다. 설명·제안만으로 보안 조치가 실행되지 않습니다.'));
   return root;
 }
 

@@ -8,27 +8,36 @@ const STAGE_LABEL = '5차 방어전 · 20단계';
 
 // 제공 CSS 는 건드리지 않고, 학생 칸의 모양은 여기서 요소별로 입힙니다(style-src 'self' 에서도 CSSOM 은 허용).
 // 라이트·다크 두 벌의 색을 두고, 학생 칸 배너의 버튼으로 고릅니다. 선택값은 주소 뒤 #theme=… 에만 둡니다.
+// 디자인 콘셉트: "등대"(AGENT_NAME) — 짙은 밤바다 네이비 바탕 + 등대 불빛의 호박색(beacon) 포인트.
+// 상태는 색만으로 구분하지 않고 항상 같은 글자(텍스트)로도 구분합니다(색은 보조).
+const BEACON = '#f0a63c';
+const BEACON_DARK = '#c97a12';
+const SPACE = { xs: '4px', sm: '8px', md: '12px', lg: '20px', xl: '28px' };
+const RADIUS = { card: '14px', pill: '999px', control: '10px' };
+const SHADOW = { light: '0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 20px -12px rgba(15, 23, 42, 0.18)', dark: '0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 24px -12px rgba(0, 0, 0, 0.55)' };
 const PALETTES = {
   light: {
-    text: '#1c2533', muted: '#556070', cardBg: '#ffffff', cardLine: '#cfd6e2',
-    bannerBg: '#1f2a44', bannerText: '#ffffff',
+    text: '#141c2b', muted: '#5b6678', cardBg: '#ffffff', cardLine: '#dde3ee',
+    bannerBg: 'linear-gradient(135deg, #10203f 0%, #1c3764 60%, #2a4a85 100%)', bannerText: '#f4f7fd',
+    accent: BEACON_DARK, shadow: SHADOW.light, pageFaint: '#eef2f8',
     tones: {
-      ok: { background: '#e7f6ec', color: '#0b5d2a', border: '1px solid #78c490' },
-      warn: { background: '#fff3df', color: '#8a4b00', border: '1px solid #efb359' },
-      bad: { background: '#fde8e8', color: '#9f1212', border: '1px solid #e58a8a' },
-      info: { background: '#e8f0fe', color: '#1a3f8f', border: '1px solid #8fb0f2' },
-      neutral: { background: '#eef1f5', color: '#2f3744', border: '1px solid #b7c0cc' },
+      ok: { background: '#e6f6ec', color: '#0a6b38', border: '1px solid #8fd2ab' },
+      warn: { background: '#fff2df', color: '#8a5300', border: '1px solid #f0bd6c' },
+      bad: { background: '#fdebe9', color: '#a3271a', border: '1px solid #eea79c' },
+      info: { background: '#e7eefd', color: '#1d4ed8', border: '1px solid #a9c0f5' },
+      neutral: { background: '#eef1f6', color: '#333d4b', border: '1px solid #ccd3dd' },
     },
   },
   dark: {
-    text: '#ecf4ff', muted: '#a9b8cc', cardBg: '#16233a', cardLine: '#3c5170',
-    bannerBg: '#0b1220', bannerText: '#ffffff',
+    text: '#eef3fb', muted: '#9aacc4', cardBg: '#111c30', cardLine: '#273a57',
+    bannerBg: 'linear-gradient(135deg, #060b16 0%, #0e1b33 55%, #16294a 100%)', bannerText: '#f4f7fd',
+    accent: BEACON, shadow: SHADOW.dark, pageFaint: '#0b1322',
     tones: {
-      ok: { background: '#12392a', color: '#9be8c5', border: '1px solid #2f7d5b' },
-      warn: { background: '#4a3510', color: '#ffd28a', border: '1px solid #a8741f' },
-      bad: { background: '#4a1b22', color: '#ffb3bd', border: '1px solid #a8434f' },
-      info: { background: '#1b2e55', color: '#b9d0ff', border: '1px solid #4a6fb5' },
-      neutral: { background: '#2a3442', color: '#d5dde8', border: '1px solid #5b6b80' },
+      ok: { background: '#0f3326', color: '#8fe3b9', border: '1px solid #2f7d5b' },
+      warn: { background: '#412c0b', color: '#ffcb79', border: '1px solid #a8741f' },
+      bad: { background: '#421a20', color: '#ffaab2', border: '1px solid #a8434f' },
+      info: { background: '#162543', color: '#b4cdff', border: '1px solid #4a6fb5' },
+      neutral: { background: '#232e3f', color: '#d5dde8', border: '1px solid #4a5a70' },
     },
   },
 };
@@ -74,47 +83,77 @@ const isRecord = (value) => value !== null && typeof value === 'object' && !Arra
 
 // 보조 문장(제공 CSS 의 muted 색은 다크 바탕에서 흐려서 직접 색을 정합니다).
 function mutedNote(text) {
-  return paint(node('p', text, 'muted'), { color: palette().muted, lineHeight: '1.5' });
+  return paint(node('p', text, 'muted'), {
+    color: palette().muted, lineHeight: '1.6', fontSize: '0.88rem', margin: `${SPACE.xs} 0 0`,
+  });
 }
 
 // 색은 보조일 뿐이고, 상태는 항상 글자로도 적습니다.
 function badge(text, tone, big = false) {
   return paint(node('span', text), {
     ...palette().tones[tone],
-    display: 'inline-block',
-    padding: big ? '6px 14px' : '2px 10px',
-    borderRadius: '999px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: big ? '7px 16px' : '3px 11px',
+    borderRadius: RADIUS.pill,
     fontWeight: '700',
-    fontSize: big ? '1.15rem' : '0.95rem',
+    fontSize: big ? '1.1rem' : '0.86rem',
+    letterSpacing: '0.01em',
     lineHeight: '1.5',
   });
 }
 
 function box(text, tone, className) {
+  const p = palette();
   return paint(node('p', text, className), {
-    ...palette().tones[tone],
-    padding: '10px 14px',
-    borderRadius: '8px',
-    margin: '6px 0',
+    ...p.tones[tone],
+    padding: `${SPACE.sm} ${SPACE.md}`,
+    borderRadius: RADIUS.control,
+    margin: `${SPACE.xs} 0`,
     fontWeight: '600',
-    lineHeight: '1.5',
+    fontSize: '0.95rem',
+    lineHeight: '1.55',
+    borderLeftWidth: '4px',
   });
 }
 
 function card() {
   const p = palette();
   return paint(node('section'), {
-    padding: '12px 16px',
-    margin: '10px 0',
+    padding: `${SPACE.lg} ${SPACE.lg}`,
+    margin: `${SPACE.md} 0`,
     border: `1px solid ${p.cardLine}`,
-    borderRadius: '10px',
+    borderRadius: RADIUS.card,
     background: p.cardBg,
     color: p.text,
+    boxShadow: p.shadow,
   });
 }
 
+// 카드 제목 앞에 등대 불빛 느낌의 작은 포인트 막대를 둡니다(장식용, 글자 내용은 그대로).
 function cardTitle(text) {
-  return paint(node('h3', text), { margin: '0 0 8px', fontSize: '1.05rem', fontWeight: '800', color: palette().text });
+  const wrap = paint(node('h3'), {
+    margin: `0 0 ${SPACE.md}`,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    fontSize: '1.02rem',
+    fontWeight: '800',
+    letterSpacing: '-0.01em',
+    color: palette().text,
+  });
+  const mark = paint(node('span'), {
+    display: 'inline-block',
+    width: '4px',
+    height: '1.05em',
+    borderRadius: '999px',
+    background: palette().accent,
+    flexShrink: '0',
+  });
+  mark.setAttribute('aria-hidden', 'true');
+  wrap.append(mark, node('span', text));
+  return wrap;
 }
 
 // ---- 13단계: 로그인 사용자·기기·세션 표시 ----
@@ -219,40 +258,81 @@ function drawResource(title, resource, draw) {
   return section;
 }
 
-// 배너: 현재 차수·단계, 보안 Agent 이름, 라이트·다크 선택 버튼.
+// 등대 불빛 아이콘(순수 장식, aria-hidden). createElementNS 로 SVG DOM 을 직접 구성합니다(문자열 삽입 없음).
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+  return el;
+}
+function buildBeaconIcon(color) {
+  const svg = svgEl('svg', { viewBox: '0 0 48 48', width: '34', height: '34', 'aria-hidden': 'true', focusable: 'false' });
+  svg.append(
+    svgEl('path', { d: 'M22 6h4l3 6h-10z', fill: color }), // 꼭대기 등
+    svgEl('rect', { x: 19, y: 14, width: 10, height: 20, rx: 2, fill: 'none', stroke: color, 'stroke-width': 2 }),
+    svgEl('path', { d: 'M15 40h18l-3-6H18z', fill: color }), // 받침
+    svgEl('line', { x1: 29, y1: 16, x2: 44, y2: 10, stroke: color, 'stroke-width': 2, 'stroke-linecap': 'round', opacity: '0.85' }),
+    svgEl('line', { x1: 29, y1: 21, x2: 45, y2: 20, stroke: color, 'stroke-width': 2, 'stroke-linecap': 'round', opacity: '0.6' }),
+    svgEl('line', { x1: 29, y1: 26, x2: 44, y2: 30, stroke: color, 'stroke-width': 2, 'stroke-linecap': 'round', opacity: '0.4' }),
+  );
+  return svg;
+}
+
+// 배너: 현재 차수·단계, 보안 Agent 이름, 라이트·다크 선택 버튼. "등대" 콘셉트의 장식(아이콘·빛번짐)만 더했고 글자는 그대로입니다.
 function stageBanner() {
   const p = palette();
   const banner = paint(node('div'), {
+    position: 'relative',
+    overflow: 'hidden',
     background: p.bannerBg,
     color: p.bannerText,
-    padding: '12px 16px',
-    borderRadius: '10px',
+    padding: `${SPACE.lg} ${SPACE.xl}`,
+    borderRadius: RADIUS.card,
     lineHeight: '1.5',
     display: 'flex',
-    gap: '12px',
+    gap: SPACE.lg,
     alignItems: 'center',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
     border: `1px solid ${p.cardLine}`,
+    boxShadow: p.shadow,
   });
+  // 오른쪽 위에서 번지는 등대 불빛(장식, 글자 없음).
+  const glow = paint(node('div'), {
+    position: 'absolute', inset: '0', pointerEvents: 'none',
+    background: `radial-gradient(420px circle at 88% -10%, ${p.accent}33, transparent 60%)`,
+  });
+  glow.setAttribute('aria-hidden', 'true');
+
+  const identity = paint(node('div'), { display: 'flex', alignItems: 'center', gap: SPACE.md, position: 'relative' });
+  const iconWrap = paint(node('div'), {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    width: '48px', height: '48px', borderRadius: RADIUS.control, flexShrink: '0',
+    background: 'rgba(255, 255, 255, 0.08)', border: `1px solid ${p.accent}55`,
+  });
+  iconWrap.append(buildBeaconIcon(p.accent));
   const titles = node('div');
   titles.append(
-    paint(node('div', STAGE_LABEL), { fontSize: '0.9rem', opacity: '0.85', fontWeight: '600' }),
-    paint(node('div', AGENT_NAME), { fontSize: '1.2rem', fontWeight: '800' }),
+    paint(node('div', STAGE_LABEL), { fontSize: '0.82rem', fontWeight: '700', letterSpacing: '0.04em', textTransform: 'uppercase', color: p.accent }),
+    paint(node('div', AGENT_NAME), { fontSize: '1.28rem', fontWeight: '800', letterSpacing: '-0.01em', marginTop: '2px' }),
   );
+  identity.append(iconWrap, titles);
+
   const toggle = paint(node('button', theme === 'dark' ? '라이트 모드로 보기' : '다크 모드로 보기'), {
-    background: 'transparent',
+    position: 'relative',
+    background: 'rgba(255, 255, 255, 0.06)',
     color: p.bannerText,
-    border: '1px solid rgba(255, 255, 255, 0.7)',
-    borderRadius: '8px',
-    padding: '6px 12px',
+    border: `1px solid ${p.accent}66`,
+    borderRadius: RADIUS.control,
+    padding: '8px 16px',
     fontWeight: '700',
+    fontSize: '0.9rem',
     cursor: 'pointer',
   });
   toggle.type = 'button';
   toggle.setAttribute('aria-pressed', String(theme === 'dark'));
   toggle.addEventListener('click', toggleTheme);
-  banner.append(titles, toggle);
+  banner.append(glow, identity, toggle);
   return banner;
 }
 
@@ -372,13 +452,15 @@ function sortedEvents(data) {
 const uniqueValues = (events, pick) => [...new Set(events.map(pick).filter((value) => value !== ''))];
 
 function accessibleButton(text, onClick) {
+  const p = palette();
   const button = paint(node('button', text), {
     background: 'transparent',
-    color: palette().text,
-    border: `1px solid ${palette().cardLine}`,
-    borderRadius: '8px',
-    padding: '4px 10px',
+    color: p.accent,
+    border: `1.5px solid ${p.accent}`,
+    borderRadius: RADIUS.control,
+    padding: '5px 12px',
     fontWeight: '700',
+    fontSize: '0.88rem',
     cursor: 'pointer',
   });
   button.type = 'button';
@@ -406,11 +488,11 @@ function listBlock(title, items, describe, emptyText) {
 function drawEventDetail(event) {
   const id = asText(event.id) || '(id 없음)';
   const detail = paint(node('div'), {
-    marginTop: '10px',
-    padding: '10px 12px',
-    borderRadius: '8px',
+    marginTop: SPACE.sm,
+    padding: SPACE.md,
+    borderRadius: RADIUS.control,
     border: `1px solid ${palette().cardLine}`,
-    background: theme === 'dark' ? '#0f1a2e' : '#f6f8fb',
+    background: palette().cardBg,
     color: palette().text,
   });
   detail.dataset.studentEventDetail = id;
@@ -467,14 +549,15 @@ function drawEventRow(event, onToggle) {
   const row = paint(node('li'), {
     display: 'block', // 제공 CSS 의 .plain-list li(가로 배치)를 쓰지 않습니다.
     listStyle: 'none',
-    margin: '8px 0',
-    padding: '10px 12px',
+    margin: `${SPACE.sm} 0`,
+    padding: SPACE.md,
     border: `1px solid ${palette().cardLine}`,
-    borderRadius: '10px',
+    borderRadius: RADIUS.control,
+    background: palette().pageFaint,
     color: palette().text,
   });
   row.dataset.studentEventId = id;
-  const head = paint(node('div'), { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' });
+  const head = paint(node('div'), { display: 'flex', gap: SPACE.sm, alignItems: 'center', flexWrap: 'wrap', marginBottom: '2px' });
   head.append(
     paint(node('strong', id), { fontSize: '1.02rem' }),
     badge(kindText(event.kind), event.kind === 'xdr' ? 'warn' : 'info'),
@@ -772,12 +855,182 @@ function helpBlock(diag, mode) {
   return block;
 }
 
+// 자료 하나(me·devices·sessions 같은 {status,data} 모양)를 "N건" 요약과 심각도로 줄입니다. 지어내지 않고, 상태를 못 받으면 확인 불가로 남깁니다.
+function summarizeResource(resource, { badCodes = new Set(), labels = {} } = {}) {
+  const res = isRecord(resource) ? resource : {};
+  if (res.status === 'loading') return { text: '조회 중', tone: 'info' };
+  if (res.status === 'error') return { text: '확인 불가', tone: 'bad' };
+  if (res.status === 'ok' && Array.isArray(res.data)) {
+    const count = res.data.length;
+    const bad = res.data.filter(isRecord).some((row) => badCodes.has(asText(row.status)));
+    return { text: `${count}건`, tone: count === 0 ? 'neutral' : bad ? 'warn' : 'ok' };
+  }
+  return { text: '확인 불가', tone: 'bad' };
+}
+
+// 숫자 하나 + 뜻을 함께 보여 주는 타일(색은 보조, 글자로도 항상 구분). "관제 대시보드" 한 줄 요약 영역.
+function summaryTile(label, { text, tone }) {
+  const p = palette();
+  const tile = paint(node('div'), {
+    flex: '1 1 150px',
+    minWidth: '150px',
+    padding: SPACE.md,
+    borderRadius: RADIUS.control,
+    border: `1px solid ${p.tones[tone].border.replace('1px solid ', '')}`,
+    background: p.tones[tone].background,
+  });
+  tile.append(
+    paint(node('div', label), { fontSize: '0.8rem', fontWeight: '700', color: p.tones[tone].color, opacity: '0.85' }),
+    paint(node('div', text), { fontSize: '1.5rem', fontWeight: '800', color: p.tones[tone].color, marginTop: '2px' }),
+  );
+  return tile;
+}
+
+function summaryRow(devices, sessions, notifications, diagStatus) {
+  const row = paint(node('div'), { display: 'flex', gap: SPACE.sm, flexWrap: 'wrap', margin: `0 0 ${SPACE.md}` });
+  const notifCount = Array.isArray(notifications) ? notifications.length : null;
+  const diagMap = { ok: { text: '확인됨', tone: 'ok' }, idle: { text: '미조회', tone: 'neutral' }, loading: { text: '조회 중', tone: 'info' }, error: { text: '확인 불가', tone: 'bad' } };
+  row.append(
+    summaryTile('등록 기기', summarizeResource(devices, { badCodes: BAD_STATES })),
+    summaryTile('현재 세션', summarizeResource(sessions, { badCodes: BAD_STATES })),
+    summaryTile('알림', notifCount === null ? { text: '확인 불가', tone: 'bad' } : { text: `${notifCount}건`, tone: notifCount > 0 ? 'warn' : 'ok' }),
+    summaryTile('연결 점검', diagMap[diagStatus] ?? diagMap.error),
+  );
+  return row;
+}
+
+// 상태 하나(정상 / 주의·확인 불가 / 취약)로 나눕니다. 정상이 아니면 전부 "확인이 필요"로 셉니다(지어내지 않음).
+function classifyState(code) {
+  if (NORMAL_STATES.has(code)) return 'ok';
+  if (BAD_STATES.has(code)) return 'bad';
+  return 'warn';
+}
+
+// 받은 자료(devices·sessions·notifications·연결 점검)만으로 양호/주의/취약 건수와 "확인이 필요한 항목" 목록을 셉니다.
+// 서버가 안 보낸 값은 만들지 않고, 조회하지 못한 자료는 점수 계산에서 뺍니다.
+function overviewStats(devices, sessions, notifications, diagStatus) {
+  let ok = 0, warn = 0, bad = 0, total = 0;
+  const flagged = [];
+
+  const scanResource = (resource, kindLabel, labels) => {
+    const res = isRecord(resource) ? resource : {};
+    if (res.status !== 'ok' || !Array.isArray(res.data)) return;
+    for (const row of res.data) {
+      if (!isRecord(row)) continue;
+      total += 1;
+      const code = asText(row.status);
+      const tone = classifyState(code);
+      if (tone === 'ok') ok += 1; else if (tone === 'bad') bad += 1; else warn += 1;
+      if (tone !== 'ok') {
+        const label = asText(row.label) || asText(row.id) || '확인 불가';
+        flagged.push({ text: `${kindLabel}: ${label} — ${stateText(labels, row.status)}`, tone });
+      }
+    }
+  };
+  scanResource(devices, '기기', DEVICE_LABELS);
+  scanResource(sessions, '세션', SESSION_LABELS);
+
+  if (Array.isArray(notifications)) {
+    for (const item of notifications) {
+      total += 1;
+      warn += 1;
+      if (isRecord(item)) {
+        const resource = asText(item.resource);
+        const label = Object.hasOwn(RESOURCE_LABELS, resource) ? RESOURCE_LABELS[resource] : safeCode(resource);
+        flagged.push({ text: `알림: ${label} — ${safeText(item.message, 80) || safeCode(item.code)}`, tone: 'warn' });
+      }
+    }
+  }
+
+  total += 1;
+  if (diagStatus === 'ok') ok += 1;
+  else if (diagStatus === 'error') { bad += 1; flagged.push({ text: '연결 점검: 확인 불가', tone: 'bad' }); }
+  else warn += 1;
+
+  const score = total > 0 ? Math.round((ok / total) * 100) : null;
+  return { ok, warn, bad, total, score, flagged };
+}
+
+// 양호 비율을 원형 게이지로(장식, aria-hidden). 가운데 숫자는 별도 텍스트 노드로 둡니다.
+function buildGaugeSvg(score, color) {
+  const size = 104, strokeWidth = 11, r = (size - strokeWidth) / 2, c = 2 * Math.PI * r;
+  const pct = score == null ? 0 : Math.max(0, Math.min(100, score));
+  const svg = svgEl('svg', { viewBox: `0 0 ${size} ${size}`, width: '104', height: '104', 'aria-hidden': 'true', focusable: 'false' });
+  svg.append(
+    svgEl('circle', { cx: size / 2, cy: size / 2, r, fill: 'none', stroke: palette().cardLine, 'stroke-width': strokeWidth }),
+    svgEl('circle', {
+      cx: size / 2, cy: size / 2, r, fill: 'none', stroke: color, 'stroke-width': strokeWidth,
+      'stroke-linecap': 'round', 'stroke-dasharray': `${c}`, 'stroke-dashoffset': `${c * (1 - pct / 100)}`,
+      transform: `rotate(-90 ${size / 2} ${size / 2})`,
+    }),
+  );
+  return svg;
+}
+
+// 종합 상태 개요 카드: 게이지 + 분포 + "지금 확인할 항목". 모두 devices·sessions·notifications·연결 점검에서만 셉니다.
+const FLAGGED_LIST_LIMIT = 6;
+
+function overviewPanel(devices, sessions, notifications, diagStatus) {
+  const p = palette();
+  const stats = overviewStats(devices, sessions, notifications, diagStatus);
+  const section = card();
+  section.append(cardTitle('종합 상태 개요'));
+  section.append(mutedNote('지금 화면에 받은 기기·세션·알림·연결 점검 결과만으로 센 숫자입니다. 다른 자료는 포함하지 않습니다.'));
+
+  const top = paint(node('div'), { display: 'flex', gap: SPACE.lg, flexWrap: 'wrap', alignItems: 'center', margin: `${SPACE.md} 0` });
+
+  const gaugeTone = stats.score == null ? 'neutral' : stats.score >= 80 ? 'ok' : stats.score >= 50 ? 'warn' : 'bad';
+  const gaugeColor = p.tones[gaugeTone].color;
+  const gaugeWrap = paint(node('div'), { position: 'relative', width: '104px', height: '104px', flexShrink: '0' });
+  const gaugeLabel = paint(node('div', stats.score == null ? '확인 불가' : `${stats.score}%`), {
+    position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: stats.score == null ? '0.92rem' : '1.3rem', fontWeight: '800', color: p.text,
+  });
+  gaugeWrap.append(buildGaugeSvg(stats.score, gaugeColor), gaugeLabel);
+
+  const counts = paint(node('div'), { display: 'flex', flexDirection: 'column', gap: '6px' });
+  counts.append(
+    paint(node('div', `점검 ${stats.total}건 중 양호 ${stats.ok}건`), { fontWeight: '700', color: p.text }),
+    paint(node('div'), { display: 'flex', gap: '6px', flexWrap: 'wrap' }),
+  );
+  const badgeRow = counts.lastChild;
+  badgeRow.append(
+    badge(`양호 ${stats.ok}`, 'ok'),
+    badge(`주의 ${stats.warn}`, 'warn'),
+    badge(`취약 ${stats.bad}`, 'bad'),
+  );
+
+  top.append(gaugeWrap, counts);
+  section.append(top);
+
+  const flaggedBlock = node('div');
+  flaggedBlock.append(paint(node('strong', '지금 확인할 항목'), { color: p.text }));
+  if (stats.flagged.length === 0) {
+    flaggedBlock.append(mutedNote('확인이 필요한 항목이 없습니다.'));
+  } else {
+    const list = paint(node('ul', undefined, 'plain-list'), { margin: '6px 0 0', paddingLeft: '18px', color: p.text, lineHeight: '1.8' });
+    for (const item of stats.flagged.slice(0, FLAGGED_LIST_LIMIT)) {
+      const li = paint(node('li'), { color: p.text });
+      li.append(badge(item.tone === 'bad' ? '취약' : '주의', item.tone), ` ${item.text}`);
+      list.append(li);
+    }
+    flaggedBlock.append(list);
+    if (stats.flagged.length > FLAGGED_LIST_LIMIT) {
+      flaggedBlock.append(mutedNote(`이 외 ${stats.flagged.length - FLAGGED_LIST_LIMIT}건 더 있습니다. 아래 목록에서 전체를 볼 수 있습니다.`));
+    }
+  }
+  section.append(flaggedBlock);
+  return section;
+}
+
 function renderStatus(input) {
   const { devices, sessions, notifications, diagnostics, mode } = isRecord(input) ? input : {};
   const root = node('section', undefined, 'student-status');
   root.setAttribute('aria-label', '기기·세션·알림과 연결 점검 상태');
   const note = modeNote(mode);
   const diag = diagnosticsBlock(diagnostics);
+  root.append(overviewPanel(devices, sessions, notifications, diag.status));
+  root.append(summaryRow(devices, sessions, notifications, diag.status));
   root.append(
     statusList({
       title: '등록 기기', what: '기기 목록', resource: devices, emptyText: '등록된 기기가 없습니다.',

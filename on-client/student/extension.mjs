@@ -1068,8 +1068,7 @@ function pcMetricRow(list, label, metric) {
   }
 }
 
-function pcMetricDetail(data) {
-  const m = isRecord(data.metrics) ? data.metrics : {};
+function pcResourceList(m) {
   const list = node('dl', undefined, 'kv');
   pcMetricRow(list, 'CPU', m.cpu);
   if (isRecord(m.cpu) && m.cpu.state === 'ok') addRow(list, 'CPU 사용률', `${m.cpu.usagePercent}% (표본 ${m.cpu.sampleMs}ms)`);
@@ -1077,17 +1076,38 @@ function pcMetricDetail(data) {
   if (isRecord(m.memory) && m.memory.state === 'ok') addRow(list, '메모리 사용량', `${bytesToGiB(m.memory.usedBytes)} / ${bytesToGiB(m.memory.totalBytes)}`);
   pcMetricRow(list, '디스크', m.disk);
   if (isRecord(m.disk) && m.disk.state === 'ok') addRow(list, '디스크 남은 공간', `${bytesToGiB(m.disk.freeBytes)} / ${bytesToGiB(m.disk.totalBytes)}`);
+  return list;
+}
+
+// 3일차: 네트워크 구성·방화벽 설정·Windows 기록. 읽기만 하고(설정 변경 없음), 공격·침투 시험은 하지 않습니다.
+function pcNetworkSecurityList(m) {
+  const list = node('dl', undefined, 'kv');
+  pcMetricRow(list, '네트워크 구성', m.network);
+  if (isRecord(m.network) && m.network.state === 'ok') addRow(list, '네트워크 인터페이스', `${m.network.interfaceCount}개 · IPv4 ${m.network.ipv4Count}개`);
   pcMetricRow(list, 'Windows 방화벽', m.firewall);
   if (isRecord(m.firewall) && m.firewall.state === 'ok' && Array.isArray(m.firewall.profiles)) {
     addRow(list, '방화벽 프로필', m.firewall.profiles.map((p) => `${p.name} ${p.enabled ? '켜짐' : '꺼짐'}`).join(' · '));
   }
-  pcMetricRow(list, 'Windows 기록(24시간)', m.events);
+  pcMetricRow(list, 'Windows 기록(최근 24시간)', m.events);
   if (isRecord(m.events) && m.events.state === 'ok') {
     addRow(list, '경고·오류 건수', `경고 ${m.events.warningCount} · 오류 ${m.events.errorCount}${m.events.truncated ? ` · 최대 ${m.events.sampleLimit}건까지만 집계(부분 결과)` : ''}`);
   }
-  pcMetricRow(list, '네트워크(참고, 5개 집계 제외)', m.network);
-  if (isRecord(m.network) && m.network.state === 'ok') addRow(list, '네트워크 인터페이스', `${m.network.interfaceCount}개 · IPv4 ${m.network.ipv4Count}개`);
   return list;
+}
+
+function pcMetricDetail(data) {
+  const p = palette();
+  const m = isRecord(data.metrics) ? data.metrics : {};
+  const wrap = node('div');
+  wrap.append(
+    paint(node('strong', 'PC 자원'), { color: p.text, display: 'block', marginTop: SPACE.sm }),
+    pcResourceList(m),
+    paint(node('strong', '네트워크·보안 설정(이 PC만)'), { color: p.text, display: 'block', marginTop: SPACE.sm }),
+    mutedNote('이 조회는 이 PC 자체의 설정·기록만 읽습니다. 업무 서버(SDP) 연결 상태는 위쪽 "보호 현황"·"연결 점검" 카드에서 따로 확인하며, 여기 조회가 성공했다고 SDP가 연결된 것은 아닙니다.'),
+    pcNetworkSecurityList(m),
+    mutedNote('방화벽·Windows 설정은 읽기만 하고 바꾸지 않습니다. 경고·오류 건수는 침해나 공격을 탐지한 결과가 아니라 운영체제 기록 집계일 뿐입니다.'),
+  );
+  return wrap;
 }
 
 // 직전 조회와 비교해 CPU·메모리·디스크 사용 비율이 어떻게 바뀌었는지만 보여 줍니다. 새 요청을 보내지 않습니다.

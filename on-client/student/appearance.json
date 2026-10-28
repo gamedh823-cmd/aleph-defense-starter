@@ -1,0 +1,10 @@
+{
+  "schema": "alekov.student-appearance.v1",
+  "appName": "등대, 낯선 접속을 가장 먼저 알아보다",
+  "palette": {
+    "accent": "#c97a12",
+    "background": "#eef2f8",
+    "surface": "#ffffff"
+  },
+  "dashboardPreset": "student-first"
+}

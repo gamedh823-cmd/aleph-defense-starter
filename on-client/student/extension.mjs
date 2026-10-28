@@ -21,10 +21,10 @@ const PALETTES = {
     bannerBg: 'linear-gradient(135deg, #10203f 0%, #1c3764 60%, #2a4a85 100%)', bannerText: '#f4f7fd',
     accent: BEACON_DARK, shadow: SHADOW.light, pageFaint: '#eef2f8',
     tones: {
-      ok: { background: '#e6f6ec', color: '#0a6b38', border: '1px solid #8fd2ab' },
-      warn: { background: '#fff2df', color: '#8a5300', border: '1px solid #f0bd6c' },
-      bad: { background: '#fdebe9', color: '#a3271a', border: '1px solid #eea79c' },
-      info: { background: '#e7eefd', color: '#1d4ed8', border: '1px solid #a9c0f5' },
+      ok: { background: '#e2f8e9', color: '#15803d', border: '1px solid #6ad68f' },
+      warn: { background: '#fff1cf', color: '#b45309', border: '1px solid #f3b53c' },
+      bad: { background: '#fde2e1', color: '#c0291a', border: '1px solid #ef8c7e' },
+      info: { background: '#e2ecff', color: '#1d4ed8', border: '1px solid #8facf7' },
       neutral: { background: '#eef1f6', color: '#333d4b', border: '1px solid #ccd3dd' },
     },
   },
@@ -32,12 +32,13 @@ const PALETTES = {
     text: '#eef3fb', muted: '#9aacc4', cardBg: '#111c30', cardLine: '#273a57',
     bannerBg: 'linear-gradient(135deg, #060b16 0%, #0e1b33 55%, #16294a 100%)', bannerText: '#f4f7fd',
     accent: BEACON, shadow: SHADOW.dark, pageFaint: '#0b1322',
+    // 보안 SIEM형 대시보드 느낌의 선명한 색(채도 높은 빨강·주황·노랑초록·파랑)을 참고했습니다. 화면을 그대로 베끼지 않고 색감만 가져왔습니다.
     tones: {
-      ok: { background: '#0f3326', color: '#8fe3b9', border: '1px solid #2f7d5b' },
-      warn: { background: '#412c0b', color: '#ffcb79', border: '1px solid #a8741f' },
-      bad: { background: '#421a20', color: '#ffaab2', border: '1px solid #a8434f' },
-      info: { background: '#162543', color: '#b4cdff', border: '1px solid #4a6fb5' },
-      neutral: { background: '#232e3f', color: '#d5dde8', border: '1px solid #4a5a70' },
+      ok: { background: '#0b2f1e', color: '#22c55e', border: '1px solid #1f8a4c' },
+      warn: { background: '#3a2206', color: '#f59e0b', border: '1px solid #c2860f' },
+      bad: { background: '#3a1012', color: '#ef4444', border: '1px solid #c23c3c' },
+      info: { background: '#0f2347', color: '#3b82f6', border: '1px solid #3f66b0' },
+      neutral: { background: '#1c2535', color: '#94a3b8', border: '1px solid #44536b' },
     },
   },
 };
@@ -336,16 +337,27 @@ function stageBanner() {
   return banner;
 }
 
+// 넓은 화면에서는 카드가 옆으로 나란히, 좁은 화면에서는 세로로 쌓이는 반응형 그리드(순전히 레이아웃, 글자 내용은 그대로).
+function gridRow() {
+  return paint(node('div'), {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+    gap: SPACE.md,
+    alignItems: 'start',
+  });
+}
+
 function renderIdentity(input) {
   const { me, devices, sessions } = isRecord(input) ? input : {};
   const root = node('section', undefined, 'student-identity');
   root.setAttribute('aria-label', '로그인 사용자·기기·세션');
-  root.append(
-    stageBanner(),
+  const grid = gridRow();
+  grid.append(
     drawResource('현재 로그인', me, drawMe),
     drawResource('내 기기 목록', devices, drawDevices),
     drawResource('세션 목록', sessions, drawSessions),
   );
+  root.append(stageBanner(), grid);
   return root;
 }
 
@@ -1031,7 +1043,8 @@ function renderStatus(input) {
   const diag = diagnosticsBlock(diagnostics);
   root.append(overviewPanel(devices, sessions, notifications, diag.status));
   root.append(summaryRow(devices, sessions, notifications, diag.status));
-  root.append(
+  const grid = gridRow();
+  grid.append(
     statusList({
       title: '등록 기기', what: '기기 목록', resource: devices, emptyText: '등록된 기기가 없습니다.',
       scopeNote: '내 이름으로 등록되고 회수되지 않은 기기이며 최대 100개까지 보입니다. 서버가 모르는 값은 확인 불가로 표시합니다.',
@@ -1046,6 +1059,7 @@ function renderStatus(input) {
     diag.section,
     helpBlock(diag, mode),
   );
+  root.append(grid);
   if (note) root.prepend(note);
   return root;
 }

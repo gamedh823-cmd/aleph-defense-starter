@@ -1040,6 +1040,14 @@ function overviewPanel(devices, sessions, notifications, diagStatus) {
 // 서버가 이미 가진 읽기 전용 조회를 학생 화면에서도 부릅니다. 자동으로 반복 조회하지 않고, 버튼을 누를 때만 조회합니다.
 // 값을 받지 못한 항목은 "확인 불가"와 이유로 남기고, 예시 값으로 메우지 않습니다.
 const PC_STATUS_PATH = '/api/pc/status';
+const PC_STATUS_BUTTON_ID = 'student-pc-status-button';
+// 전체 칸이 다시 그려져도(앱이 onChange 때 통째로 교체) 버튼을 누른 키보드 사용자가 같은 자리에서 이어갈 수 있게 포커스를 되돌립니다.
+function focusPcStatusButton() {
+  try {
+    const again = globalThis.document?.getElementById(PC_STATUS_BUTTON_ID);
+    if (again && typeof again.focus === 'function') again.focus();
+  } catch { /* 포커스를 못 돌려도 화면 내용은 정상입니다. */ }
+}
 const PC_REASON_LABELS = {
   invalid_sample: '표본 오류', invalid_response: '응답 형식 오류', query_failed: '조회 실패',
   permission_denied: '권한 부족', unsupported: '이 환경에서 미지원', cancelled: '취소됨', timeout: '시간 초과',
@@ -1140,6 +1148,7 @@ async function requestPcStatus() {
   if (!studentApi || pcStatus.status === 'loading') return;
   pcStatus = { status: 'loading' };
   redraw();
+  focusPcStatusButton();
   let res;
   try {
     res = await studentApi.get(PC_STATUS_PATH);
@@ -1153,13 +1162,14 @@ async function requestPcStatus() {
     pcStatus = { status: 'error', error: isRecord(res) ? res.error : null };
   }
   redraw();
+  focusPcStatusButton();
 }
 
 function pcStatusCard() {
   const p = palette();
   const section = card();
   section.append(cardTitle('내 PC 점검(학생 구현)'));
-  section.append(mutedNote('CPU·메모리·디스크·Windows 방화벽·Windows 기록 다섯 항목을 버튼을 누를 때만 실제로 조회합니다. 자동으로 반복 조회하지 않고, 읽지 못한 항목은 예시 값 없이 "확인 불가"로 남깁니다.'));
+  section.append(mutedNote('CPU·메모리·디스크·Windows 방화벽·Windows 기록 다섯 항목을 버튼을 누를 때만 실제로 조회합니다. 자동으로 반복 조회하지 않고, 읽지 못한 항목은 예시 값 없이 "확인 불가"로 남깁니다. 위쪽 배너의 「예제 자료(demo)」 표시와 상관없이 이 조회는 항상 지금 이 PC에서 실제로 읽습니다.'));
 
   if (!studentApi) {
     section.append(box('지원 없음: 이 화면 환경에서 PC 조회 연결을 받지 못했습니다.', 'neutral', 'state state-empty'));
@@ -1167,6 +1177,7 @@ function pcStatusCard() {
   }
 
   const button = accessibleButton(pcStatus.status === 'loading' ? '조회 중…' : pcStatus.status === 'ok' ? '다시 조회' : '내 PC 실측 조회', requestPcStatus);
+  button.id = PC_STATUS_BUTTON_ID;
   if (pcStatus.status === 'loading') { button.disabled = true; button.setAttribute('aria-disabled', 'true'); }
   section.append(button);
 
@@ -1179,9 +1190,13 @@ function pcStatusCard() {
     const message = safeText(isRecord(pcStatus.error) ? pcStatus.error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
     if (code === 'NOT_ALLOWED') {
       section.append(box('지원 없음: 이 시작 틀 판에서는 학생 화면의 PC 조회가 아직 허용되지 않습니다.', 'neutral', 'state state-empty'));
-      section.append(mutedNote('위쪽 제공 카드 「내 PC 상태」에서 같은 값을 확인할 수 있습니다.'));
+      section.append(mutedNote('다음에 할 일: 위쪽 제공 카드 「내 PC 상태」에서 같은 값을 확인하세요. 시작 틀을 최신판으로 업데이트하면 이 화면에서도 조회할 수 있습니다.'));
     } else {
+      const nextStep = code === 'TIMEOUT' ? '다음에 할 일: 잠시 뒤 버튼을 다시 눌러 조회하세요.'
+        : code === 'CANCELLED' ? '다음에 할 일: 필요하면 버튼을 다시 눌러 새로 조회하세요.'
+        : '다음에 할 일: 버튼을 다시 눌러 조회하세요. 반복해서 실패하면 담당자에게 이 오류 코드를 알려 주세요.';
       section.append(box(`조회 실패 (${code}): ${message}`, 'bad', 'state state-error'));
+      section.append(mutedNote(nextStep));
     }
   } else if (pcStatus.status === 'ok') {
     const data = pcStatus.data;

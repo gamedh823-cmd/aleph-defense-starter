@@ -53,6 +53,7 @@ function initialTheme() {
 
 let theme = initialTheme();
 let redraw = () => {}; // createStudentView 가 앱의 onChange 를 받아 채웁니다.
+let studentApi = null; // createStudentView 가 앱의 studentApi(get 전용)를 받아 채웁니다.
 const palette = () => PALETTES[theme];
 
 function toggleTheme() {
@@ -1035,6 +1036,150 @@ function overviewPanel(devices, sessions, notifications, diagStatus) {
   return section;
 }
 
+// ---- 6차 총공세 2일차: 내 PC 점검(student/extension.mjs + /api/pc/status) ----
+// 서버가 이미 가진 읽기 전용 조회를 학생 화면에서도 부릅니다. 자동으로 반복 조회하지 않고, 버튼을 누를 때만 조회합니다.
+// 값을 받지 못한 항목은 "확인 불가"와 이유로 남기고, 예시 값으로 메우지 않습니다.
+const PC_STATUS_PATH = '/api/pc/status';
+const PC_REASON_LABELS = {
+  invalid_sample: '표본 오류', invalid_response: '응답 형식 오류', query_failed: '조회 실패',
+  permission_denied: '권한 부족', unsupported: '이 환경에서 미지원', cancelled: '취소됨', timeout: '시간 초과',
+};
+const PC_CORE_METRICS = ['cpu', 'memory', 'disk', 'firewall', 'events']; // 네트워크는 이 다섯 개와 따로 셉니다(제공 카드가 별도 표시).
+const PC_STALE_MS = 60_000; // 60초보다 오래된 측정값은 "오래됨"으로 표시합니다.
+const PC_HISTORY_LIMIT = 10;
+
+let pcStatus = { status: 'idle' }; // 'idle' | 'loading' | 'ok' | 'error'
+let pcHistory = []; // 최근 조회에서 읽은 cpu·memory·disk 비율만 모읍니다(추이 비교용, 서버에 다시 묻지 않음).
+
+const pcReasonText = (reason) => `${Object.hasOwn(PC_REASON_LABELS, reason) ? PC_REASON_LABELS[reason] : '확인 불가'} (${asText(reason) || 'unknown'})`;
+
+function bytesToGiB(bytes) {
+  return `${(bytes / (1024 ** 3)).toFixed(1)}GiB`;
+}
+
+// 조회 성공·권한 부족·부분 결과(실패)를 모두 글자로 구분합니다. 색은 보조입니다.
+function pcMetricRow(list, label, metric) {
+  if (!isRecord(metric)) { addRow(list, label, badge('확인 불가 (invalid_response)', 'bad')); return; }
+  if (metric.state === 'ok') {
+    addRow(list, label, badge('조회 성공', 'ok'));
+  } else {
+    const tone = metric.reason === 'permission_denied' ? 'warn' : 'bad';
+    addRow(list, label, badge(pcReasonText(metric.reason), tone));
+  }
+}
+
+function pcMetricDetail(data) {
+  const m = isRecord(data.metrics) ? data.metrics : {};
+  const list = node('dl', undefined, 'kv');
+  pcMetricRow(list, 'CPU', m.cpu);
+  if (isRecord(m.cpu) && m.cpu.state === 'ok') addRow(list, 'CPU 사용률', `${m.cpu.usagePercent}% (표본 ${m.cpu.sampleMs}ms)`);
+  pcMetricRow(list, '메모리', m.memory);
+  if (isRecord(m.memory) && m.memory.state === 'ok') addRow(list, '메모리 사용량', `${bytesToGiB(m.memory.usedBytes)} / ${bytesToGiB(m.memory.totalBytes)}`);
+  pcMetricRow(list, '디스크', m.disk);
+  if (isRecord(m.disk) && m.disk.state === 'ok') addRow(list, '디스크 남은 공간', `${bytesToGiB(m.disk.freeBytes)} / ${bytesToGiB(m.disk.totalBytes)}`);
+  pcMetricRow(list, 'Windows 방화벽', m.firewall);
+  if (isRecord(m.firewall) && m.firewall.state === 'ok' && Array.isArray(m.firewall.profiles)) {
+    addRow(list, '방화벽 프로필', m.firewall.profiles.map((p) => `${p.name} ${p.enabled ? '켜짐' : '꺼짐'}`).join(' · '));
+  }
+  pcMetricRow(list, 'Windows 기록(24시간)', m.events);
+  if (isRecord(m.events) && m.events.state === 'ok') {
+    addRow(list, '경고·오류 건수', `경고 ${m.events.warningCount} · 오류 ${m.events.errorCount}${m.events.truncated ? ` · 최대 ${m.events.sampleLimit}건까지만 집계(부분 결과)` : ''}`);
+  }
+  pcMetricRow(list, '네트워크(참고, 5개 집계 제외)', m.network);
+  if (isRecord(m.network) && m.network.state === 'ok') addRow(list, '네트워크 인터페이스', `${m.network.interfaceCount}개 · IPv4 ${m.network.ipv4Count}개`);
+  return list;
+}
+
+// 직전 조회와 비교해 CPU·메모리·디스크 사용 비율이 어떻게 바뀌었는지만 보여 줍니다. 새 요청을 보내지 않습니다.
+function pcTrendNote() {
+  if (pcHistory.length < 2) return mutedNote('비교할 이전 조회가 아직 없습니다. 한 번 더 조회하면 직전 값과 비교해 보여 줍니다.');
+  const prev = pcHistory[pcHistory.length - 2];
+  const last = pcHistory[pcHistory.length - 1];
+  const delta = (a, b) => (a == null || b == null ? null : Math.round((b - a) * 10) / 10);
+  const lines = [];
+  const cpuDelta = delta(prev.cpuPercent, last.cpuPercent);
+  if (cpuDelta !== null) lines.push(`CPU ${cpuDelta >= 0 ? '▲' : '▼'}${Math.abs(cpuDelta)}%p`);
+  const memDelta = delta(prev.memRatio, last.memRatio);
+  if (memDelta !== null) lines.push(`메모리 사용률 ${memDelta >= 0 ? '▲' : '▼'}${Math.abs(memDelta)}%p`);
+  const diskDelta = delta(prev.diskFreeRatio, last.diskFreeRatio);
+  if (diskDelta !== null) lines.push(`디스크 여유율 ${diskDelta >= 0 ? '▲' : '▼'}${Math.abs(diskDelta)}%p`);
+  if (lines.length === 0) return mutedNote('직전 조회와 비교할 값이 없습니다(두 조회 모두 확인 불가).');
+  return mutedNote(`직전 조회(${formatAt(prev.measuredAt)}) 대비: ${lines.join(' · ')}`);
+}
+
+function recordPcHistory(data) {
+  const m = isRecord(data.metrics) ? data.metrics : {};
+  const cpuPercent = isRecord(m.cpu) && m.cpu.state === 'ok' ? m.cpu.usagePercent : null;
+  const memRatio = isRecord(m.memory) && m.memory.state === 'ok' ? Math.round((m.memory.usedBytes / m.memory.totalBytes) * 1000) / 10 : null;
+  const diskFreeRatio = isRecord(m.disk) && m.disk.state === 'ok' ? Math.round((m.disk.freeBytes / m.disk.totalBytes) * 1000) / 10 : null;
+  pcHistory.push({ measuredAt: data.measuredAt, cpuPercent, memRatio, diskFreeRatio });
+  if (pcHistory.length > PC_HISTORY_LIMIT) pcHistory.shift();
+}
+
+async function requestPcStatus() {
+  if (!studentApi || pcStatus.status === 'loading') return;
+  pcStatus = { status: 'loading' };
+  redraw();
+  let res;
+  try {
+    res = await studentApi.get(PC_STATUS_PATH);
+  } catch {
+    res = { ok: false, error: { code: 'REQUEST_FAILED', message: '요청을 보내지 못했습니다.' } };
+  }
+  if (res && res.ok === true && isRecord(res.data) && isRecord(res.data.metrics)) {
+    pcStatus = { status: 'ok', data: res.data };
+    recordPcHistory(res.data);
+  } else {
+    pcStatus = { status: 'error', error: isRecord(res) ? res.error : null };
+  }
+  redraw();
+}
+
+function pcStatusCard() {
+  const p = palette();
+  const section = card();
+  section.append(cardTitle('내 PC 점검(학생 구현)'));
+  section.append(mutedNote('CPU·메모리·디스크·Windows 방화벽·Windows 기록 다섯 항목을 버튼을 누를 때만 실제로 조회합니다. 자동으로 반복 조회하지 않고, 읽지 못한 항목은 예시 값 없이 "확인 불가"로 남깁니다.'));
+
+  if (!studentApi) {
+    section.append(box('지원 없음: 이 화면 환경에서 PC 조회 연결을 받지 못했습니다.', 'neutral', 'state state-empty'));
+    return section;
+  }
+
+  const button = accessibleButton(pcStatus.status === 'loading' ? '조회 중…' : pcStatus.status === 'ok' ? '다시 조회' : '내 PC 실측 조회', requestPcStatus);
+  if (pcStatus.status === 'loading') { button.disabled = true; button.setAttribute('aria-disabled', 'true'); }
+  section.append(button);
+
+  if (pcStatus.status === 'idle') {
+    section.append(box('아직 조회하지 않았습니다.', 'neutral', 'state state-empty'));
+  } else if (pcStatus.status === 'loading') {
+    section.append(box('조회 중… (몇 초 걸릴 수 있습니다)', 'info', 'state state-loading'));
+  } else if (pcStatus.status === 'error') {
+    const code = safeCode(isRecord(pcStatus.error) ? pcStatus.error.code : '');
+    const message = safeText(isRecord(pcStatus.error) ? pcStatus.error.message : '') || '서버가 이유를 알려 주지 않았습니다.';
+    if (code === 'NOT_ALLOWED') {
+      section.append(box('지원 없음: 이 시작 틀 판에서는 학생 화면의 PC 조회가 아직 허용되지 않습니다.', 'neutral', 'state state-empty'));
+      section.append(mutedNote('위쪽 제공 카드 「내 PC 상태」에서 같은 값을 확인할 수 있습니다.'));
+    } else {
+      section.append(box(`조회 실패 (${code}): ${message}`, 'bad', 'state state-error'));
+    }
+  } else if (pcStatus.status === 'ok') {
+    const data = pcStatus.data;
+    const m = isRecord(data.metrics) ? data.metrics : {};
+    const okCount = PC_CORE_METRICS.filter((key) => isRecord(m[key]) && m[key].state === 'ok').length;
+    const ageMs = Date.now() - Date.parse(asText(data.measuredAt));
+    const stale = Number.isFinite(ageMs) && ageMs > PC_STALE_MS;
+    section.append(badge(`실측 ${okCount}/${PC_CORE_METRICS.length} · 확인 불가 ${PC_CORE_METRICS.length - okCount}개`, okCount === PC_CORE_METRICS.length ? 'ok' : okCount === 0 ? 'bad' : 'warn', true));
+    if (stale) section.append(box(`오래됨: 측정 시각이 ${Math.round(ageMs / 1000)}초 전입니다. 다시 조회해야 지금 값입니다.`, 'warn', 'state'));
+    section.append(mutedNote(`측정 시각: ${formatAt(data.measuredAt)}`));
+    section.append(pcMetricDetail(data));
+    section.append(paint(node('strong', '추이 비교'), { color: p.text, display: 'block', marginTop: SPACE.sm }));
+    section.append(pcTrendNote());
+  }
+  section.append(mutedNote('관찰이 0건이거나 방화벽이 모두 켜져 있다는 것만으로 안전·이상 없음으로 판정하지 않습니다. CPU 값은 200ms 표본 한 번입니다.'));
+  return section;
+}
+
 function renderStatus(input) {
   const { devices, sessions, notifications, diagnostics, mode } = isRecord(input) ? input : {};
   const root = node('section', undefined, 'student-status');
@@ -1043,6 +1188,7 @@ function renderStatus(input) {
   const diag = diagnosticsBlock(diagnostics);
   root.append(overviewPanel(devices, sessions, notifications, diag.status));
   root.append(summaryRow(devices, sessions, notifications, diag.status));
+  root.append(pcStatusCard());
   const grid = gridRow();
   grid.append(
     statusList({
@@ -1456,6 +1602,7 @@ function renderVulnerabilities(input) {
 export function createStudentView(context) {
   // 앱이 주는 onChange 를 부르면 학생 표시 함수가 최신 자료로 다시 그려집니다(테마를 바꿀 때 씁니다).
   redraw = typeof context?.onChange === 'function' ? context.onChange : () => {};
+  studentApi = isRecord(context?.api) && typeof context.api.get === 'function' ? context.api : null;
   return {
     renderIdentity,
     renderDecision,

@@ -342,7 +342,8 @@ function stageBanner() {
 function gridRow() {
   return paint(node('div'), {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+    // 학생 칸 자체가 제공 페이지의 절반 폭이라 220px 기준으로 낮춰야 그 안에서도 2열이 됩니다.
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
     gap: SPACE.md,
     alignItems: 'start',
   });

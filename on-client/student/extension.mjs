@@ -966,10 +966,10 @@ function overviewStats(devices, sessions, notifications, diagStatus) {
 }
 
 // 양호 비율을 원형 게이지로(장식, aria-hidden). 가운데 숫자는 별도 텍스트 노드로 둡니다.
-function buildGaugeSvg(score, color) {
-  const size = 104, strokeWidth = 11, r = (size - strokeWidth) / 2, c = 2 * Math.PI * r;
+function buildGaugeSvg(score, color, size = 104) {
+  const strokeWidth = Math.round(size * 0.105), r = (size - strokeWidth) / 2, c = 2 * Math.PI * r;
   const pct = score == null ? 0 : Math.max(0, Math.min(100, score));
-  const svg = svgEl('svg', { viewBox: `0 0 ${size} ${size}`, width: '104', height: '104', 'aria-hidden': 'true', focusable: 'false' });
+  const svg = svgEl('svg', { viewBox: `0 0 ${size} ${size}`, width: String(size), height: String(size), 'aria-hidden': 'true', focusable: 'false' });
   svg.append(
     svgEl('circle', { cx: size / 2, cy: size / 2, r, fill: 'none', stroke: palette().cardLine, 'stroke-width': strokeWidth }),
     svgEl('circle', {
@@ -991,27 +991,28 @@ function overviewPanel(devices, sessions, notifications, diagStatus) {
   section.append(cardTitle('종합 상태 개요'));
   section.append(mutedNote('지금 화면에 받은 기기·세션·알림·연결 점검 결과만으로 센 숫자입니다. 다른 자료는 포함하지 않습니다.'));
 
-  const top = paint(node('div'), { display: 'flex', gap: SPACE.lg, flexWrap: 'wrap', alignItems: 'center', margin: `${SPACE.md} 0` });
+  const top = paint(node('div'), { display: 'flex', gap: SPACE.xl, flexWrap: 'wrap', alignItems: 'center', margin: `${SPACE.lg} 0` });
 
   const gaugeTone = stats.score == null ? 'neutral' : stats.score >= 80 ? 'ok' : stats.score >= 50 ? 'warn' : 'bad';
   const gaugeColor = p.tones[gaugeTone].color;
-  const gaugeWrap = paint(node('div'), { position: 'relative', width: '104px', height: '104px', flexShrink: '0' });
+  const gaugeSize = 144;
+  const gaugeWrap = paint(node('div'), { position: 'relative', width: `${gaugeSize}px`, height: `${gaugeSize}px`, flexShrink: '0' });
   const gaugeLabel = paint(node('div', stats.score == null ? '확인 불가' : `${stats.score}%`), {
     position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: stats.score == null ? '0.92rem' : '1.3rem', fontWeight: '800', color: p.text,
+    fontSize: stats.score == null ? '1.05rem' : '1.9rem', fontWeight: '800', color: p.text,
   });
-  gaugeWrap.append(buildGaugeSvg(stats.score, gaugeColor), gaugeLabel);
+  gaugeWrap.append(buildGaugeSvg(stats.score, gaugeColor, gaugeSize), gaugeLabel);
 
-  const counts = paint(node('div'), { display: 'flex', flexDirection: 'column', gap: '6px' });
+  const counts = paint(node('div'), { display: 'flex', flexDirection: 'column', gap: '10px', flex: '1 1 260px' });
   counts.append(
-    paint(node('div', `점검 ${stats.total}건 중 양호 ${stats.ok}건`), { fontWeight: '700', color: p.text }),
-    paint(node('div'), { display: 'flex', gap: '6px', flexWrap: 'wrap' }),
+    paint(node('div', `점검 ${stats.total}건 중 양호 ${stats.ok}건`), { fontWeight: '800', fontSize: '1.15rem', color: p.text }),
+    paint(node('div'), { display: 'flex', gap: '8px', flexWrap: 'wrap' }),
   );
   const badgeRow = counts.lastChild;
   badgeRow.append(
-    badge(`양호 ${stats.ok}`, 'ok'),
-    badge(`주의 ${stats.warn}`, 'warn'),
-    badge(`취약 ${stats.bad}`, 'bad'),
+    badge(`양호 ${stats.ok}`, 'ok', true),
+    badge(`주의 ${stats.warn}`, 'warn', true),
+    badge(`취약 ${stats.bad}`, 'bad', true),
   );
 
   top.append(gaugeWrap, counts);
@@ -1034,6 +1035,8 @@ function overviewPanel(devices, sessions, notifications, diagStatus) {
     }
   }
   section.append(flaggedBlock);
+  section.append(paint(node('strong', '자료별 건수'), { color: p.text, display: 'block', marginTop: SPACE.md }));
+  section.append(summaryRow(devices, sessions, notifications, diagStatus));
   return section;
 }
 
@@ -1223,7 +1226,6 @@ function renderStatus(input) {
   const note = modeNote(mode);
   const diag = diagnosticsBlock(diagnostics);
   root.append(overviewPanel(devices, sessions, notifications, diag.status));
-  root.append(summaryRow(devices, sessions, notifications, diag.status));
   root.append(pcStatusCard());
   const grid = gridRow();
   grid.append(

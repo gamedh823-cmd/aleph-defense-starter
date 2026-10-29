@@ -1069,9 +1069,22 @@ function bytesToGiB(bytes) {
   return `${(bytes / (1024 ** 3)).toFixed(1)}GiB`;
 }
 
+// 응답이 state:'ok'라고 해도 값이 숫자로 들어 있지 않으면 읽은 것으로 세지 않습니다(성공한 응답과 값을 읽은 것은 다릅니다).
+const PC_REQUIRED_NUMBERS = {
+  cpu: ['usagePercent'], memory: ['usedBytes', 'totalBytes'], disk: ['totalBytes', 'freeBytes'],
+  firewall: [], events: ['warningCount', 'errorCount'], network: ['interfaceCount', 'ipv4Count'],
+};
+function pcMetricUsable(key, metric) {
+  if (!isRecord(metric) || metric.state !== 'ok') return false;
+  if (!(PC_REQUIRED_NUMBERS[key] || []).every((field) => Number.isFinite(metric[field]) && metric[field] >= 0)) return false;
+  if ((key === 'memory' || key === 'disk') && !(metric.totalBytes > 0)) return false;
+  if (key === 'firewall' && !(Array.isArray(metric.profiles) && metric.profiles.every((profile) => isRecord(profile) && typeof profile.enabled === 'boolean'))) return false;
+  return true;
+}
+
 // 조회 성공·권한 부족·부분 결과(실패)를 모두 글자로 구분합니다. 색은 보조입니다.
-function pcMetricRow(list, label, metric) {
-  if (!isRecord(metric)) { addRow(list, label, badge('확인 불가 (invalid_response)', 'bad')); return; }
+function pcMetricRow(list, label, metric, key) {
+  if (!isRecord(metric) || (metric.state === 'ok' && !pcMetricUsable(key, metric))) { addRow(list, label, badge('확인 불가 (invalid_response)', 'bad')); return; }
   if (metric.state === 'ok') {
     addRow(list, label, badge('조회 성공', 'ok'));
   } else {
@@ -1082,26 +1095,26 @@ function pcMetricRow(list, label, metric) {
 
 function pcResourceList(m) {
   const list = node('dl', undefined, 'kv');
-  pcMetricRow(list, 'CPU', m.cpu);
-  if (isRecord(m.cpu) && m.cpu.state === 'ok') addRow(list, 'CPU 사용률', `${m.cpu.usagePercent}% (표본 ${m.cpu.sampleMs}ms)`);
-  pcMetricRow(list, '메모리', m.memory);
-  if (isRecord(m.memory) && m.memory.state === 'ok') addRow(list, '메모리 사용량', `${bytesToGiB(m.memory.usedBytes)} / ${bytesToGiB(m.memory.totalBytes)}`);
-  pcMetricRow(list, '디스크', m.disk);
-  if (isRecord(m.disk) && m.disk.state === 'ok') addRow(list, '디스크 남은 공간', `${bytesToGiB(m.disk.freeBytes)} / ${bytesToGiB(m.disk.totalBytes)}`);
+  pcMetricRow(list, 'CPU', m.cpu, 'cpu');
+  if (pcMetricUsable('cpu', m.cpu)) addRow(list, 'CPU 사용률', `${m.cpu.usagePercent}%${Number.isFinite(m.cpu.sampleMs) ? ` (표본 ${m.cpu.sampleMs}ms)` : ''}`);
+  pcMetricRow(list, '메모리', m.memory, 'memory');
+  if (pcMetricUsable('memory', m.memory)) addRow(list, '메모리 사용량', `${bytesToGiB(m.memory.usedBytes)} / ${bytesToGiB(m.memory.totalBytes)}`);
+  pcMetricRow(list, '디스크', m.disk, 'disk');
+  if (pcMetricUsable('disk', m.disk)) addRow(list, '디스크 남은 공간', `${bytesToGiB(m.disk.freeBytes)} / ${bytesToGiB(m.disk.totalBytes)}`);
   return list;
 }
 
 // 3일차: 네트워크 구성·방화벽 설정·Windows 기록. 읽기만 하고(설정 변경 없음), 공격·침투 시험은 하지 않습니다.
 function pcNetworkSecurityList(m) {
   const list = node('dl', undefined, 'kv');
-  pcMetricRow(list, '네트워크 구성', m.network);
-  if (isRecord(m.network) && m.network.state === 'ok') addRow(list, '네트워크 인터페이스', `${m.network.interfaceCount}개 · IPv4 ${m.network.ipv4Count}개`);
-  pcMetricRow(list, 'Windows 방화벽', m.firewall);
-  if (isRecord(m.firewall) && m.firewall.state === 'ok' && Array.isArray(m.firewall.profiles)) {
+  pcMetricRow(list, '네트워크 구성', m.network, 'network');
+  if (pcMetricUsable('network', m.network)) addRow(list, '네트워크 인터페이스', `${m.network.interfaceCount}개 · IPv4 ${m.network.ipv4Count}개`);
+  pcMetricRow(list, 'Windows 방화벽', m.firewall, 'firewall');
+  if (pcMetricUsable('firewall', m.firewall)) {
     addRow(list, '방화벽 프로필', m.firewall.profiles.map((p) => `${p.name} ${p.enabled ? '켜짐' : '꺼짐'}`).join(' · '));
   }
-  pcMetricRow(list, 'Windows 기록(최근 24시간)', m.events);
-  if (isRecord(m.events) && m.events.state === 'ok') {
+  pcMetricRow(list, 'Windows 기록(최근 24시간)', m.events, 'events');
+  if (pcMetricUsable('events', m.events)) {
     addRow(list, '경고·오류 건수', `경고 ${m.events.warningCount} · 오류 ${m.events.errorCount}${m.events.truncated ? ` · 최대 ${m.events.sampleLimit}건까지만 집계(부분 결과)` : ''}`);
   }
   return list;
@@ -1141,9 +1154,9 @@ function pcTrendNote() {
 
 function recordPcHistory(data) {
   const m = isRecord(data.metrics) ? data.metrics : {};
-  const cpuPercent = isRecord(m.cpu) && m.cpu.state === 'ok' ? m.cpu.usagePercent : null;
-  const memRatio = isRecord(m.memory) && m.memory.state === 'ok' ? Math.round((m.memory.usedBytes / m.memory.totalBytes) * 1000) / 10 : null;
-  const diskFreeRatio = isRecord(m.disk) && m.disk.state === 'ok' ? Math.round((m.disk.freeBytes / m.disk.totalBytes) * 1000) / 10 : null;
+  const cpuPercent = pcMetricUsable('cpu', m.cpu) ? m.cpu.usagePercent : null;
+  const memRatio = pcMetricUsable('memory', m.memory) ? Math.round((m.memory.usedBytes / m.memory.totalBytes) * 1000) / 10 : null;
+  const diskFreeRatio = pcMetricUsable('disk', m.disk) ? Math.round((m.disk.freeBytes / m.disk.totalBytes) * 1000) / 10 : null;
   pcHistory.push({ measuredAt: data.measuredAt, cpuPercent, memRatio, diskFreeRatio });
   if (pcHistory.length > PC_HISTORY_LIMIT) pcHistory.shift();
 }
@@ -1223,10 +1236,12 @@ function pcStatusCard(mode) {
   } else if (pcStatus.status === 'ok') {
     const data = pcStatus.data;
     const m = isRecord(data.metrics) ? data.metrics : {};
-    const okCount = PC_CORE_METRICS.filter((key) => isRecord(m[key]) && m[key].state === 'ok').length;
+    const okCount = PC_CORE_METRICS.filter((key) => pcMetricUsable(key, m[key])).length;
     const ageMs = Date.now() - Date.parse(asText(data.measuredAt));
     const stale = Number.isFinite(ageMs) && ageMs > PC_STALE_MS;
+    const noTime = !Number.isFinite(ageMs);
     section.append(badge(`실측 ${okCount}/${PC_CORE_METRICS.length} · 확인 불가 ${PC_CORE_METRICS.length - okCount}개`, okCount === PC_CORE_METRICS.length ? 'ok' : okCount === 0 ? 'bad' : 'warn', true));
+    if (noTime) section.append(box('측정 시각 확인 불가: 서버가 측정 시각을 주지 않았거나 읽을 수 없습니다. 현재 값으로 믿지 말고 다시 조회하세요.', 'warn', 'state'));
     if (stale) section.append(box(`오래됨: 측정 시각이 ${Math.round(ageMs / 1000)}초 전입니다. 다시 조회해야 지금 값입니다.`, 'warn', 'state'));
     section.append(mutedNote(`측정 시각: ${formatAt(data.measuredAt)}`));
     section.append(pcMetricDetail(data));
@@ -1234,6 +1249,105 @@ function pcStatusCard(mode) {
     section.append(pcTrendNote());
   }
   section.append(mutedNote('관찰이 0건이거나 방화벽이 모두 켜져 있다는 것만으로 안전·이상 없음으로 판정하지 않습니다. CPU 값은 200ms 표본 한 번입니다.'));
+  return section;
+}
+
+// ---- 6차 총공세 서비스 연결·사용량·비용 / 이상 징후 근거 ----
+// 서비스 비밀값·외부 요청은 이 학생 화면에서 다루지 않습니다(학생 API는 읽기 전용 허용 목록뿐이고, 연결·비밀값은 서버 쪽 담당자 설정이 필요합니다).
+// 그래서 서비스는 "연결 전 · 확인 불가"로만 보여 주고, 확인하지 못한 값을 0원·정상·안전으로 바꾸지 않습니다.
+const SERVICE_NAMES = ['GitHub', 'Vercel', 'Railway', 'Supabase'];
+const COST_FIELDS = ['청구월', '통화', '집계 기간', '실적/예상 구분', '크레딧 반영 여부', '세금 포함 여부', '출처', '조회 시각'];
+const openDetailsIds = new Set(); // 앱이 칸을 통째로 다시 그려도 펼침 상태를 되살립니다.
+
+function foldable(id, summaryText) {
+  const d = node('details');
+  d.dataset.foldId = id;
+  d.open = openDetailsIds.has(id);
+  d.addEventListener('toggle', () => { if (d.open) openDetailsIds.add(id); else openDetailsIds.delete(id); });
+  d.append(paint(node('summary', summaryText), { cursor: 'pointer', fontWeight: '700', color: palette().text, margin: `${SPACE.xs} 0` }));
+  return d;
+}
+
+function servicesCard() {
+  const section = card();
+  section.append(cardTitle('서비스 연결 · 사용량 · 비용'));
+  section.append(box('연결 전 · 모든 값 확인 불가 — 이 화면에는 연결된 서비스가 없습니다.', 'neutral', 'state state-empty'));
+  section.append(mutedNote('연결하지 않은 서비스의 비용을 0원으로, 보안·취약점을 "발견 없음"으로 쓰지 않습니다. 실제 연결에는 담당자가 허용한 방법과 서버 쪽 비밀 설정이 필요하며, 비밀값은 이 화면이나 코드·커밋에 넣지 않습니다. 이 화면은 서비스를 실제로 조회하지 않습니다.'));
+  const list = paint(node('ul'), { margin: `${SPACE.sm} 0 0`, padding: '0', listStyle: 'none' });
+  for (const name of SERVICE_NAMES) {
+    const li = paint(node('li'), { padding: '8px 0', borderTop: `1px solid ${palette().cardLine}`, color: palette().text });
+    li.dataset.studentService = name;
+    li.append(paint(node('strong', name), { marginRight: SPACE.sm }), badge('실제 연결 없음', 'neutral'), ' ', badge('연결 전 · 확인 불가', 'warn'));
+    const rows = node('dl', undefined, 'kv');
+    addRow(rows, '사용량', '확인 불가 (조회하지 않음)');
+    addRow(rows, '월 비용', '확인 불가 (0원이 아님)');
+    addRow(rows, '보안·취약점', '확인 불가 (발견 없음이 아님)');
+    li.append(rows);
+    const fold = foldable(`svc-${name}`, '비용 근거 항목 보기');
+    const need = paint(node('ul'), { margin: '4px 0 0', paddingLeft: '18px', lineHeight: '1.7' });
+    for (const field of COST_FIELDS) need.append(node('li', `${field}: 확인 불가`));
+    fold.append(need, mutedNote('금액을 보이려면 위 항목이 모두 있어야 합니다. 통화가 다른 금액은 합치지 않고, 실적과 월말 예상은 따로 적습니다.'));
+    li.append(fold);
+    list.append(li);
+  }
+  section.append(list);
+  return section;
+}
+
+// 관찰 하나는 "무엇을 봤는지"와 "그것만으로 말할 수 없는 것"을 함께 가집니다. 판정이 아니라 근거입니다.
+function collectEvidence(devices, sessions) {
+  const items = [];
+  const d = pcStatus.status === 'ok' ? pcStatus.data : null;
+  if (d) {
+    const m = isRecord(d.metrics) ? d.metrics : {};
+    const src = `내 PC 실측(/api/pc/status) · ${formatAt(d.measuredAt)}`;
+    if (pcMetricUsable('cpu', m.cpu) && m.cpu.usagePercent >= 90) items.push({ saw: `CPU 사용률 ${m.cpu.usagePercent}%`, cannot: '200ms 표본 한 번입니다. 어떤 프로그램 때문인지, 악성인지 말할 수 없습니다.', src });
+    if (pcMetricUsable('memory', m.memory) && m.memory.usedBytes / m.memory.totalBytes >= 0.9) items.push({ saw: `메모리 사용 ${Math.round((m.memory.usedBytes / m.memory.totalBytes) * 100)}%`, cannot: '사용량이 높다는 것만으로 악성코드라고 말할 수 없습니다.', src });
+    if (pcMetricUsable('disk', m.disk) && m.disk.freeBytes / m.disk.totalBytes <= 0.1) items.push({ saw: `디스크 남은 공간 ${Math.round((m.disk.freeBytes / m.disk.totalBytes) * 100)}%`, cannot: '공간이 부족한 원인은 알 수 없습니다.', src });
+    if (pcMetricUsable('firewall', m.firewall)) {
+      for (const profile of m.firewall.profiles.filter((x) => x.enabled === false)) items.push({ saw: `Windows 방화벽 ${safeText(profile.name, 40) || '프로필'} 꺼짐`, cannot: '꺼져 있는 이유(의도 여부)와 다른 보호 수단이 있는지는 알 수 없습니다.', src });
+    }
+    if (pcMetricUsable('events', m.events) && m.events.errorCount > 0) items.push({ saw: `Windows 기록 오류 ${m.events.errorCount}건(경고 ${m.events.warningCount}건)${m.events.truncated ? ' · 최대 5,000건까지만 집계' : ''}`, cannot: '건수일 뿐 침해 판정이 아니며 기록 본문은 읽지 않았습니다.', src });
+  }
+  const scan = (resource, kind, labels) => {
+    const res = isRecord(resource) ? resource : {};
+    if (res.status !== 'ok' || !Array.isArray(res.data)) return;
+    for (const row of res.data) {
+      if (!isRecord(row) || classifyState(asText(row.status)) === 'ok') continue;
+      items.push({ saw: `${kind} ${asText(row.label) || asText(row.id) || '이름 확인 불가'}: ${stateText(labels, row.status)}`, cannot: '서버가 알려 준 상태값일 뿐 실제 침입이나 도난을 뜻하지 않습니다.', src: `${kind} 목록(학생 API) · 이 화면이 받은 시점` });
+    }
+  };
+  scan(devices, '기기', DEVICE_LABELS);
+  scan(sessions, '세션', SESSION_LABELS);
+  return items;
+}
+
+function evidenceCard(devices, sessions) {
+  const section = card();
+  section.append(cardTitle('이상 징후 근거'));
+  section.append(mutedNote('판정이 아니라 관찰한 근거입니다. 출처·시각과 함께, 그것만으로 말할 수 없는 것을 같이 적습니다.'));
+  const items = collectEvidence(devices, sessions);
+  const pcRead = pcStatus.status === 'ok';
+  section.append(badge(`관찰 ${items.length}건 · 내 PC ${pcRead ? '조회함' : '조회 전'}`, items.length ? 'warn' : 'neutral'));
+  if (items.length === 0) {
+    section.append(box(pcRead ? '관찰 0건입니다. 이것은 이상 없음이나 안전하다는 뜻이 아닙니다. 읽은 항목 범위 안에서 기준에 걸린 것이 없다는 뜻입니다.' : '내 PC를 아직 조회하지 않았고 기기·세션에서 확인된 관찰도 없습니다. 관찰 0건은 안전 판정이 아닙니다.', 'neutral', 'state state-empty'));
+  }
+  const list = paint(node('ul'), { margin: `${SPACE.sm} 0 0`, padding: '0', listStyle: 'none' });
+  items.slice(0, 12).forEach((item, index) => {
+    const li = paint(node('li'), { padding: '8px 0', borderTop: `1px solid ${palette().cardLine}`, color: palette().text });
+    li.append(badge('관찰', 'warn'), ` ${item.saw}`);
+    const fold = foldable(`evid-${index}`, '근거와 한계 보기');
+    const rows = node('dl', undefined, 'kv');
+    addRow(rows, '무엇을 봤는지', item.saw);
+    addRow(rows, '말할 수 없는 것', item.cannot);
+    addRow(rows, '출처·시각', item.src);
+    fold.append(rows);
+    li.append(fold);
+    list.append(li);
+  });
+  section.append(list);
+  if (items.length > 12) section.append(mutedNote(`관찰이 많아 12건만 보여 줍니다(전체 ${items.length}건).`));
+  section.append(mutedNote('서비스(GitHub·Vercel·Railway·Supabase)는 연결 전이라 이 근거에 들어 있지 않습니다. 서비스에 대해서는 확인 불가입니다.'));
   return section;
 }
 
@@ -1245,6 +1359,7 @@ function renderStatus(input) {
   const diag = diagnosticsBlock(diagnostics);
   root.append(overviewPanel(devices, sessions, notifications, diag.status));
   root.append(pcStatusCard(mode));
+  root.append(servicesCard(), evidenceCard(devices, sessions));
   const grid = gridRow();
   grid.append(
     statusList({

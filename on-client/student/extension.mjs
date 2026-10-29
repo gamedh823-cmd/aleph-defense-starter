@@ -1169,11 +1169,29 @@ async function requestPcStatus() {
   focusPcStatusButton();
 }
 
-function pcStatusCard() {
+// 3일차: PC 조회 성공과 SDP(업무 서버) 연결 상태를 섞지 않도록 따로 보여 줍니다. 실제 엔진 모드 값만 쓰고 지어내지 않습니다.
+const SDP_STATUS_VIEWS = {
+  connected: { text: '연결됨 (connected)', tone: 'ok' },
+  demo: { text: '미연결 · 예제 자료 전용 (demo)', tone: 'warn' },
+  disconnected: { text: 'SDP 미연결 (disconnected)', tone: 'bad' },
+};
+function sdpStatusLine(mode) {
+  const code = asText(mode);
+  const view = Object.hasOwn(SDP_STATUS_VIEWS, code) ? SDP_STATUS_VIEWS[code] : { text: `확인 불가 (${code || 'unknown'})`, tone: 'neutral' };
+  const line = badge(`SDP 서버: ${view.text}`, view.tone);
+  line.dataset.studentSdpStatus = code || 'unknown';
+  return line;
+}
+
+function pcStatusCard(mode) {
   const p = palette();
   const section = card();
   section.append(cardTitle('내 PC 점검(학생 구현)'));
   section.append(mutedNote('CPU·메모리·디스크·Windows 방화벽·Windows 기록 다섯 항목을 버튼을 누를 때만 실제로 조회합니다. 자동으로 반복 조회하지 않고, 읽지 못한 항목은 예시 값 없이 "확인 불가"로 남깁니다. 위쪽 배너의 「예제 자료(demo)」 표시와 상관없이 이 조회는 항상 지금 이 PC에서 실제로 읽습니다.'));
+  const sdpWrap = paint(node('div'), { margin: `${SPACE.xs} 0 ${SPACE.sm}` });
+  sdpWrap.append(sdpStatusLine(mode));
+  section.append(sdpWrap);
+  section.append(mutedNote('이 SDP 상태는 PC 조회와 다른 값입니다. PC 조회가 성공해도 SDP 미연결일 수 있고, 섞어서 읽지 않습니다.'));
 
   if (!studentApi) {
     section.append(box('지원 없음: 이 화면 환경에서 PC 조회 연결을 받지 못했습니다.', 'neutral', 'state state-empty'));
@@ -1226,7 +1244,7 @@ function renderStatus(input) {
   const note = modeNote(mode);
   const diag = diagnosticsBlock(diagnostics);
   root.append(overviewPanel(devices, sessions, notifications, diag.status));
-  root.append(pcStatusCard());
+  root.append(pcStatusCard(mode));
   const grid = gridRow();
   grid.append(
     statusList({
